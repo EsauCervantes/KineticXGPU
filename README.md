@@ -175,13 +175,3 @@ Planned extensions:
 - [ ] Add CI tests  
 
 ---
-
-## Example CV Description
-
-> Built KineticXGPU, a PyTorch-based GPU-accelerated Boltzmann collision operator framework; achieved X× speedup over CPU baseline and implemented diagnostics for Maxwell–Boltzmann thermalization. Currently developing neural surrogate operator for scalable kinetic simulations.
-
----
-
-## License
-
-MIT License
