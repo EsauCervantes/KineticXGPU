@@ -1,4 +1,4 @@
-# src/collision_torch_logq.py (or keep in collision_torch.py)
+# src/collision_torch_logq.py
 import numpy as np
 import torch
 from grid_log import (
