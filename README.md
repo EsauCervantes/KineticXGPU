@@ -19,7 +19,7 @@ The collision term is typically the computational bottleneck in Boltzmann equati
 This project explores:
 
 - Efficient tensorized implementations in PyTorch  
-- GPU acceleration strategies (CUDA backend)  
+- GPU acceleration strategies  
 - Operator approximation using neural networks  
 - Performance benchmarking and scalability analysis  
 
