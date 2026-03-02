@@ -164,14 +164,3 @@ Planned extensions:
 - Investigate operator-learning approaches (MLP / DeepONet / FNO)  
 
 ---
-
-## Roadmap
-
-- [ ] Complete GPU benchmarking across grid sizes  
-- [ ] Add reproducible benchmark logging  
-- [ ] Implement neural surrogate training pipeline  
-- [ ] Add conservation diagnostics (number / energy)  
-- [ ] Mixed precision experiments  
-- [ ] Add CI tests  
-
----
