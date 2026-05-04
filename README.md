@@ -61,12 +61,12 @@ Example benchmark table (illustrative — to be updated):
 | 1024       | TBD      | TBD      | TBD     |
 | 4096       | TBD      | TBD      | TBD     |
 
-Hardware details (to be updated):
+Hardware details for this benchmark:
 
-- GPU: TBD  
-- CUDA version: TBD  
-- Precision: float32  
-
+- CPU: Intel® Core™ i7-10750H CPU @ 2.60GHz, 6 cores / 12 threads
+- GPU: NVIDIA Quadro T2000 Mobile / Max-Q
+- CUDA version: TBD
+- Precision: float32
 ---
 
 ## Thermalization Test
