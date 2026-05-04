@@ -12,7 +12,7 @@ This repository is part of ongoing work on accelerating kinetic simulations rele
 ---
 
 ## Motivation
-The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure \( df/dt = C[f] \), where \( C[f] \) is an integral operator acting on the distribution function $f$. For self-scattering collisions, after discretizing the momentum grid gives $f_i = f(p_i)$, the self-scattering collision operator can be written schematically as a double sum over f (resembling a bilinear form in 2-2 self scattering), which optimized with GPU tensor operations. This is the aim of the code.
+The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure \( df/dt = C[f] \), where \( C[f] \) is an integral operator acting on the distribution function $f$. For self-scattering collisions, after discretizing the momentum grid gives \(f_i = f(p_i)\), the self-scattering collision operator can be written schematically as a double sum over f (resembling a bilinear form in 2-2 self scattering), which optimized with GPU tensor operations. This is the aim of the code.
 
 This project explores:
 
