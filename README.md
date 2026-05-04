@@ -12,20 +12,7 @@ This repository is part of ongoing work on accelerating kinetic simulations rele
 ---
 
 ## Motivation
-The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure $\frac{\mathrm{d}f}{\mathrm{d}t} = C[f]$, where $C[f]$ is an integral operator acting on the distribution function $f$. For self-scattering collisions, after discretizing the momentum grid as $f_i \equiv f(p_i)$, the self-scattering collision operator can be written schematically as
-
-$$
-C_{\mathrm{self}}[f_i]
-\simeq
-\frac{(\Delta p)^2}{2 g_\chi}
-\sum_n \sum_m
-F(p_n, p_m)
-\left[
-f_n f_m - f_i \widetilde{f}_j
-\right].
-$$
-
-Here $\Delta p$ is the momentum-grid spacing, $g_\chi$ is the number of internal degrees of freedom, and $\widetilde{f}_j$ denotes the distribution evaluated at the momentum fixed by momentum conservation. The function $F(p_n,p_m)$, depending on the physical setting and the approximations used, is a one- or two-dimensional integral. The double sum above can be optimized with GPU tensor operations, which is precisely the aim of the code.
+The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure \( df/dt = C[f] \), where \( C[f] \) is an integral operator acting on the distribution function $f$. For self-scattering collisions, after discretizing the momentum grid as $f_i \equiv f(p_i)$, the self-scattering collision operator can be written schematically as a double sum over f (resembling a bilinear form in 2-2 self scattering), which optimized with GPU tensor operations. This is the aim of the code.
 
 This project explores:
 
