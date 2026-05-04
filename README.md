@@ -7,14 +7,14 @@ KineticXGPU is a PyTorch-based implementation of a Boltzmann collision operator 
 - Benchmarking CPU vs GPU performance  
 - Studying relaxation toward Maxwell–Boltzmann equilibrium
   
-This repository is part of ongoing work on accelerating kinetic simulations relevant to non-equilibrium dynamics and freeze-in studies.
+This repository is part of ongoing work on accelerating kinetic simulations relevant to non-equilibrium dynamics in the early universe.
 
 ---
 
 ## Motivation
 
 The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation generally has this structure:
-$ \frac{df}{dt} = C[f] $, where C[f] is an integral operator acting over f. For self-scattering collisions and after discretization, the operator takes the form
+$\frac{df}{dt} = C[f]$, where C[f] is an integral operator acting over f. For self-scattering collisions and after discretization, the operator takes the form
 
 This project explores:
 
