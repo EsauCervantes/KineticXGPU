@@ -569,7 +569,7 @@ def _F_kernel_batch_constant_M2_vec(pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc
 @torch.no_grad()
 def _C_self_torch_logq_impl(
     f, a,
-    q, logq0, dlogq, log_space,
+    q,
     m, lam,
     Ng=16, batch_size=16,
     return_diagnostics=False,
@@ -724,25 +724,6 @@ def _C_self_torch_logq_impl(
         E=E,
         dp=dp_vec,) 
 
-    #if apply_conservation_projection:
-    #    if C_src_for_feedback is None or dndt_target is None or drhodt_target is None:
-    #        raise ValueError(
-    #            "Need C_src_for_feedback, dndt_target, drhodt_target for projection."
-    #        )
-
-    #    C = enforce_to_target_moments_weighted(
-    #        C_self_raw=C,
-    #        C_src=C_src_for_feedback,
-    #        f=f,
-    #        p=p,
-    #        E=E,
-    #        dp=dp_vec,
-   #         dndt_target=dndt_target,
-    #        drhodt_target=drhodt_target,
-     #       gchi=gchi,
-     #   )
-
-
     if return_diagnostics:
         I_energy, I_number, rE, rN = check_conservation_nonuniform(
             C, p, E, dp_vec
@@ -782,10 +763,9 @@ _C_self_torch_logq_compiled = torch.compile(_C_self_torch_logq_impl)
 @torch.no_grad()
 def C_self_torch_logq_conservative_impl(
     f, a,
-    q, logq0, dlogq, log_space,
+    q,
     m, lam,
     Ng=16, batch_size=16,
-    apply_conservation_projection=False,
     return_diagnostics=False,
     f_floor_rel=1e-300,
 ):
@@ -1040,17 +1020,15 @@ def C_self_torch_logq_conservative_impl(
             C, p, E, dp_vec
         )
 
-    # This should now be unnecessary except as a numerical fallback.
-    # If it noticeably changes the answer, the residual is probably from
-    # truncation at the q-boundaries, float32 summation, or invalid channels.
-    if apply_conservation_projection:
-        C = enforce_self_zero_moments_weighted(
-            C_self_raw=C,
-            f=f,
-            p=p,
-            E=E,
-            dp=dp_vec,
-        )
+    # Numerical fallback for any residual from boundary truncation,
+    # float32 summation, or invalid channels.
+    C = enforce_self_zero_moments_weighted(
+        C_self_raw=C,
+        f=f,
+        p=p,
+        E=E,
+        dp=dp_vec,
+    )
 
     if return_diagnostics:
         I_energy, I_number, rE, rN = check_conservation_nonuniform(
@@ -1098,7 +1076,7 @@ def C_self_torch_logq_conservative_scatter(*args, **kwargs):
 @torch.no_grad()
 def rhs_df_da_torch_logq_generic(
     f, a,
-    q, logq0, dlogq, log_space,
+    q,
     m_chi,
     H_of_a,
     C_self_func=None,
@@ -1110,11 +1088,8 @@ def rhs_df_da_torch_logq_generic(
     m_h2=None,
     m_other2=0.0,
     multiplicity2=1.0,
-    dndt_target_of_a=None,
-    drhodt_target_of_a=None,
     gchi=1.0,
     pref_FI=1.0,
-    apply_feedback_projection=False,
 ):
     device, dtype = f.device, f.dtype
     p = q / a
@@ -1147,22 +1122,11 @@ def rhs_df_da_torch_logq_generic(
 
     C_self = 0.0
     if C_self_func is not None:
-        dndt_target = None if dndt_target_of_a is None else float(dndt_target_of_a(float(a)))
-        drhodt_target = None if drhodt_target_of_a is None else float(drhodt_target_of_a(float(a)))
-
-        C_self, E, p_self, dp_vec = C_self_func(
+        C_self, *_ = C_self_func(
             f=f,
             a=a,
             q=q,
-            logq0=logq0,
-            dlogq=dlogq,
-            log_space=log_space,
             m=m_chi,
-            apply_conservation_projection=apply_feedback_projection,
-            C_src_for_feedback=C_src,
-            dndt_target=dndt_target,
-            drhodt_target=drhodt_target,
-            gchi=gchi,
             return_diagnostics=False,
         )
 
@@ -1182,7 +1146,7 @@ def rhs_df_da_torch_logq_generic(
 @torch.no_grad()
 def rhs_df_da_torch_logq_FI(
     f, a,
-    q, logq0, dlogq, log_space,
+    q,
     m_chi,
     H_of_a,
     T_of_a=None,
@@ -1237,9 +1201,6 @@ def estimate_gamma_eff_from_current_f(
     f_t,
     a_star,
     q,
-    logq0,
-    dlogq,
-    log_space,
     m_chi,
     C_self_func,
     H_of_a,
@@ -1248,11 +1209,8 @@ def estimate_gamma_eff_from_current_f(
         f=f_t,
         a=a_star,
         q=q,
-        logq0=logq0,
-        dlogq=dlogq,
-        log_space=log_space,
         m=m_chi,
-        return_diagnostics=False,
+        return_diagnostics=True,
     )
 
     C_self_np = C_self_t.detach().cpu().numpy()
@@ -1274,4 +1232,5 @@ def estimate_gamma_eff_from_current_f(
         "H": H_star_float,
         "Gamma_over_H": Gamma_eff_rms / H_star_float,
         "diag": diag,
-        "C_self": C_self_t}
+        "C_self": C_self_t,
+    }

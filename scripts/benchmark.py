@@ -306,9 +306,6 @@ def run_one_operator(
     f,
     a,
     q,
-    logq0,
-    dlogq,
-    log_space,
     m,
     lam,
     Ng,
@@ -316,25 +313,21 @@ def run_one_operator(
     repeats,
     warmup,
     device,
-    apply_conservation_projection,
 ):
+    op_kwargs = {
+        "f": f,
+        "a": a,
+        "q": q,
+        "m": m,
+        "lam": lam,
+        "Ng": Ng,
+        "batch_size": batch_size,
+        "return_diagnostics": True,
+    }
+
     # Warmup
     for _ in range(warmup):
-        _ = op(
-            f=f,
-            a=a,
-            q=q,
-            logq0=logq0,
-            dlogq=dlogq,
-            log_space=log_space,
-            m=m,
-            lam=lam,
-            Ng=Ng,
-            batch_size=batch_size,
-            use_cbe_shape=False,
-            apply_conservation_projection=apply_conservation_projection,
-            return_diagnostics=True,
-        )
+        _ = op(**op_kwargs)
         synchronize(device)
 
     times = []
@@ -345,21 +338,7 @@ def run_one_operator(
         synchronize(device)
         t0 = time.perf_counter()
 
-        C, E, p, dp, diag = op(
-            f=f,
-            a=a,
-            q=q,
-            logq0=logq0,
-            dlogq=dlogq,
-            log_space=log_space,
-            m=m,
-            lam=lam,
-            Ng=Ng,
-            batch_size=batch_size,
-            use_cbe_shape=False,
-            apply_conservation_projection=apply_conservation_projection,
-            return_diagnostics=True,
-        )
+        C, E, p, dp, diag = op(**op_kwargs)
 
         synchronize(device)
         t1 = time.perf_counter()
@@ -377,7 +356,6 @@ def run_one_operator(
         "time_min_s": min(times),
         "time_max_s": max(times),
         "finite_C": bool(torch.isfinite(last_C).all().item()),
-        "apply_conservation_projection": bool(apply_conservation_projection),
     }
 
     for key, value in last_diag.items():
@@ -478,12 +456,6 @@ def main():
         ),
     )
 
-    parser.add_argument(
-        "--apply-conservation-projection",
-        action="store_true",
-        help="Apply conservation projection where supported.",
-    )
-
     args = parser.parse_args()
 
     if args.auto_batch_size and args.memory_aware_batch_size:
@@ -508,12 +480,6 @@ def main():
     dtype = torch.float64 if args.dtype == "float64" else torch.float32
 
     if args.out is None:
-        projection_tag = (
-            "projection_on"
-            if args.apply_conservation_projection
-            else "projection_off"
-        )
-
         qrange_tag = (
             f"qmin{args.q_min_factor:.0e}_"
             f"qmax{args.q_max_factor:.0e}"
@@ -529,7 +495,7 @@ def main():
         out_name = (
             f"collision_benchmark_{args.device}_{args.dtype}_"
             f"Ng{args.Ng}_{batch_tag}_"
-            f"{qrange_tag}_{projection_tag}.csv"
+            f"{qrange_tag}.csv"
         )
     else:
         out_name = args.out
@@ -564,7 +530,7 @@ def main():
         q_min = args.q_min_factor * args.m
         q_max = args.q_max_factor * args.m
 
-        q, logq0, dlogq, log_space = make_log_q_grid(
+        q, _, _, _ = make_log_q_grid(
             q_min,
             q_max,
             N,
@@ -629,9 +595,6 @@ def main():
                     f=f,
                     a=a,
                     q=q,
-                    logq0=logq0,
-                    dlogq=dlogq,
-                    log_space=log_space,
                     m=m,
                     lam=args.lam,
                     Ng=args.Ng,
@@ -639,7 +602,6 @@ def main():
                     repeats=args.repeats,
                     warmup=args.warmup,
                     device=device,
-                    apply_conservation_projection=args.apply_conservation_projection,
                 )
 
                 row.update(

@@ -1,0 +1,74 @@
+{
+  "device": "cuda",
+  "dtype": "float64",
+  "save": true,
+  "results_dir": "results",
+  "run_name_prefix": "hybrid_saved",
+
+  "cosmology": {
+    "use_torch_tables": false
+  },
+
+  "physics": {
+    "a0": 1.0,
+    "af": 60000.0,
+    "m_chi": 0.5,
+    "m_h": 125.0,
+    "v_h": 246.0,
+    "lambda_portal": 1.08e-11,
+    "m_condensate": 1.2,
+    "gamma_condensate": 1.0e-21,
+    "n_condensate_initial": 0.02,
+    "multiplicity_condensate": 2.0,
+    "xi_inf": 1.0e-4
+  },
+
+  "grid": {
+    "q_min": 0.1,
+    "q_max": 50000.0,
+    "N": 180
+  },
+
+  "collision": {
+    "operator": "dense",
+    "lambda_self_values": [5.0e-6, 1.0e-5, 5.0e-5, 1.0e-4, 5.0e-4],
+    "Ng": 12,
+    "batch_size": 36
+  },
+
+  "hybrid": {
+    "n_windows": 400,
+    "gamma_over_H_on": 0.12,
+    "gamma_check_every_far": 50,
+    "gamma_check_every_mid": 20,
+    "gamma_check_every_near": 5,
+    "rk4_steps_per_window": 1,
+    "rk4_store_every_steps": 20
+  },
+
+  "heun": {
+    "du_init": 1.0e-3,
+    "du_min": 1.0e-5,
+    "du_max": 0.1,
+    "rtol": 1.0e-2,
+    "atol": 1.0e-12,
+    "safety": 0.95,
+    "store_every_accepted": 20,
+    "print_every_accepted": 30
+  },
+
+  "stability": {
+    "clip_negative": true,
+    "clip_tol": 0.0
+  },
+
+  "cbe": {
+    "af": 30000.0,
+    "method": "Radau",
+    "rtol": 1.0e-6,
+    "atol": 1.0e-9,
+    "max_step_u": 0.001,
+    "condensate_n_eval": 4000,
+    "condensate_zero_rel": 1.0e-14
+  }
+}

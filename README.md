@@ -12,13 +12,12 @@ This repository is part of ongoing work on accelerating kinetic simulations rele
 ---
 
 ## Motivation
-The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure \( df/dt = C[f] \), where \( C[f] \) is an integral operator acting on the distribution function $f$. For self-scattering collisions, after discretizing the momentum grid gives \(f_i = f(p_i)\), the self-scattering collision operator can be written schematically as a double sum over f (resembling a bilinear form in 2-2 self scattering), which optimized with GPU tensor operations. This is the aim of the code.
+The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure \( df/dt = C[f] \), where \( C[f] \) is an integral operator acting on the distribution function f. For self-scattering collisions, after discretizing the momentum grid gives \(f_i = f(p_i)\), the self-scattering collision operator can be written schematically as a double sum over f (resembling a bilinear form in 2-2 self scattering), which can be optimized with GPU tensor operations. This is the aim of the code.
 
 This project explores:
 
 - Efficient tensorized implementations in PyTorch  
-- GPU acceleration strategies  
-- Operator approximation using neural networks  
+- GPU acceleration strategies    
 - Performance benchmarking and scalability analysis  
 
 The objective is to enable faster iterative studies of kinetic and thermalization processes.
@@ -52,21 +51,45 @@ Performance is measured as:
 - Wall-clock time per collision operator evaluation  
 - Median over multiple runs  
 - Explicit CUDA synchronization when benchmarking GPU  
-- Fixed grid resolution and batch size  
+- Fixed angular quadrature and batch size  
 
-Example benchmark table (illustrative — to be updated):
+The table below is generated from the benchmark CSV files in
+`results/CPU-GPU_benchmarks/`. Each row reports the average, over the three
+test distributions (`MB_T_eq_m`, `two_bump`, and `hot_tail`), of the median
+runtime for the dense self-scattering collision operator.
 
-| Grid Size | CPU (ms) | GPU (ms) | Speedup |
-|------------|----------|----------|---------|
-| 1024       | TBD      | TBD      | TBD     |
-| 4096       | TBD      | TBD      | TBD     |
+Benchmark settings:
+
+- Precision: float32
+- Angular quadrature: Ng = 12
+- Batch size: 16
+- Momentum range: q/m in [1e-3, 1e2]
+- Self-coupling: lambda = 1
+- Conservation projection: on
+
+| Grid size N | CPU runtime (ms) | GPU runtime (ms) | Speedup |
+|---:|---:|---:|---:|
+| 32 | 13.6 | 6.5 | 2.10x |
+| 48 | 44.5 | 10.2 | 4.36x |
+| 64 | 112.5 | 15.5 | 7.24x |
+| 80 | 190.7 | 27.8 | 6.86x |
+| 96 | 346.8 | 41.9 | 8.28x |
+| 112 | 565.1 | 66.5 | 8.50x |
+| 128 | 862.0 | 94.7 | 9.10x |
+| 160 | 1709.7 | 180.9 | 9.45x |
+| 192 | 3016.9 | 322.2 | 9.36x |
+| 224 | 4716.6 | 505.8 | 9.33x |
+| 256 | 7036.9 | 739.3 | 9.52x |
+
+The code also contains a conservative deposition variant of the self-scattering
+operator for tests where exact discrete number and energy conservation are the
+primary concern.
 
 Hardware details for this benchmark:
 
 - CPU: Intel® Core™ i7-10750H CPU @ 2.60GHz, 6 cores / 12 threads
 - GPU: NVIDIA Quadro T2000 Mobile / Max-Q
-- CUDA version: TBD
-- Precision: float32
+- CUDA version: 12.2
 ---
 
 ## Thermalization Test

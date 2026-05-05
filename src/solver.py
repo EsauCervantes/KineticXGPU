@@ -743,9 +743,6 @@ def run_hybrid_FI_then_adaptive_self(
     a0,
     af,
     q,
-    logq0,
-    dlogq,
-    log_space,
     m_chi,
     H_of_a,
     T_of_a,
@@ -762,6 +759,9 @@ def run_hybrid_FI_then_adaptive_self(
     # Hybrid control
     n_windows=400,
     gamma_over_H_on=0.1,
+    gamma_check_every_far=50,
+    gamma_check_every_mid=20,
+    gamma_check_every_near=5,
     rk4_steps_per_window=2,
     rk4_store_every_steps=None,
 
@@ -792,6 +792,14 @@ def run_hybrid_FI_then_adaptive_self(
         raise ValueError("a0 and af must be > 0.")
     if n_windows <= 0:
         raise ValueError("n_windows must be > 0.")
+    if gamma_over_H_on <= 0:
+        raise ValueError("gamma_over_H_on must be > 0.")
+    if (
+        gamma_check_every_far <= 0
+        or gamma_check_every_mid <= 0
+        or gamma_check_every_near <= 0
+    ):
+        raise ValueError("Gamma/H check intervals must be > 0.")
     if rk4_steps_per_window <= 0:
         raise ValueError("rk4_steps_per_window must be > 0.")
 
@@ -805,6 +813,10 @@ def run_hybrid_FI_then_adaptive_self(
 
     # ------------------------------------------------------------
     # Self-scattering collision operator
+    #
+    # Built-in choices C_self_torch_logq and
+    # C_self_torch_logq_conservative_scatter share this interface, so
+    # either can be passed as C_self_operator for comparison runs.
     # ------------------------------------------------------------
     Cself_full = partial(
         C_self_operator,
@@ -820,9 +832,6 @@ def run_hybrid_FI_then_adaptive_self(
     rhs_FI = partial(
         rhs_df_da_torch_logq_FI,
         q=q,
-        logq0=logq0,
-        dlogq=dlogq,
-        log_space=log_space,
         m_chi=m_chi,
         H_of_a=H_of_a,
         T_of_a=T_of_a,
@@ -843,9 +852,6 @@ def run_hybrid_FI_then_adaptive_self(
     rhs_full = partial(
         rhs_df_da_torch_logq_generic,
         q=q,
-        logq0=logq0,
-        dlogq=dlogq,
-        log_space=log_space,
         m_chi=m_chi,
         H_of_a=H_of_a,
         C_self_func=Cself_full,
@@ -859,7 +865,6 @@ def run_hybrid_FI_then_adaptive_self(
         multiplicity2=2.0,
         gchi=1.0,
         pref_FI=1.0,
-        apply_feedback_projection=False,
     )
 
     u_grid = torch.linspace(
@@ -885,26 +890,41 @@ def run_hybrid_FI_then_adaptive_self(
     a_switch = None
     heun_status = None
     rk4_status_hist = []
+    last_gamma_over_H = 0.0
+    next_gamma_check_iw = 0
+
+    def gamma_check_interval(gamma_over_H):
+        ratio = gamma_over_H / gamma_over_H_on
+
+        if ratio < 1.0e-4:
+            return int(gamma_check_every_far)
+        if ratio < 1.0e-2:
+            return int(gamma_check_every_mid)
+        if ratio < 1.0e-1:
+            return int(gamma_check_every_near)
+        return 1
 
     for iw in range(n_windows):
         a_left = float(a_grid[iw].detach().cpu())
         a_right = float(a_grid[iw + 1].detach().cpu())
 
-        diag_self = estimate_gamma_eff_from_current_f(
-            f_t=f,
-            a_star=a_left,
-            q=q,
-            logq0=logq0,
-            dlogq=dlogq,
-            log_space=log_space,
-            m_chi=m_chi,
-            C_self_func=Cself_full,
-            H_of_a=H_of_a,
-        )
+        checked_gamma_now = iw >= next_gamma_check_iw
+        if checked_gamma_now:
+            diag_self = estimate_gamma_eff_from_current_f(
+                f_t=f,
+                a_star=a_left,
+                q=q,
+                m_chi=m_chi,
+                C_self_func=Cself_full,
+                H_of_a=H_of_a,
+            )
 
-        gamma_over_H = float(diag_self["Gamma_over_H"])
-        gamma_over_H_hist.append(gamma_over_H)
-        gamma_check_a_hist.append(torch.as_tensor(a_left, device=device, dtype=dtype))
+            last_gamma_over_H = float(diag_self["Gamma_over_H"])
+            gamma_over_H_hist.append(last_gamma_over_H)
+            gamma_check_a_hist.append(torch.as_tensor(a_left, device=device, dtype=dtype))
+            next_gamma_check_iw = iw + gamma_check_interval(last_gamma_over_H)
+
+        gamma_over_H = last_gamma_over_H
 
         if gamma_over_H < gamma_over_H_on:
             traj_rk4 = integrate_rk4_a_trajectory(
@@ -944,10 +964,11 @@ def run_hybrid_FI_then_adaptive_self(
                 )
 
             if (iw % 10 == 0) or (iw == n_windows - 1):
+                gamma_tag = "checked" if checked_gamma_now else "cached"
                 print(
                     f"[hybrid] window {iw + 1}/{n_windows} "
                     f"a={a_right:.6e} mode=FI_RK4 "
-                    f"Gamma/H={gamma_over_H:.3e} "
+                    f"Gamma/H={gamma_over_H:.3e} ({gamma_tag}) "
                     f"finite={torch.isfinite(f).all().item()}"
                 )
 
@@ -1047,6 +1068,9 @@ def run_hybrid_FI_then_adaptive_self(
         "settings": {
             "n_windows": n_windows,
             "gamma_over_H_on": gamma_over_H_on,
+            "gamma_check_every_far": gamma_check_every_far,
+            "gamma_check_every_mid": gamma_check_every_mid,
+            "gamma_check_every_near": gamma_check_every_near,
             "rk4_steps_per_window": rk4_steps_per_window,
             "rk4_store_every_steps": rk4_store_every_steps,
             "lam_self": float(lam_self),

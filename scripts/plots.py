@@ -162,7 +162,6 @@ def deduplicate_benchmarks(df):
         "lam",
         "m",
         "a",
-        "apply_conservation_projection",
     ]
 
     existing = [col for col in key_cols if col in df.columns]
@@ -204,6 +203,18 @@ def plot_runtime_vs_N(df):
 
 
 def plot_speedup_vs_N(df):
+    merge_cols = [
+        "N",
+        "shape",
+        "operator",
+        "dtype",
+        "Ng",
+        "batch_size",
+        "lam",
+        "m",
+        "a",
+    ]
+
     for shape in sorted(df["shape"].unique()):
         sub = df[df["shape"] == shape]
 
@@ -212,42 +223,44 @@ def plot_speedup_vs_N(df):
             continue
 
         plt.figure(figsize=(8.2, 5.2))
+        plotted_any = False
 
         for op in sorted(sub["operator"].unique()):
             cpu = sub[(sub["device"] == "cpu") & (sub["operator"] == op)]
             gpu = sub[(sub["device"] == "cuda") & (sub["operator"] == op)]
 
-            merge_cols = [
-                "N",
-                "shape",
-                "operator",
-                "dtype",
-                "Ng",
-                "batch_size",
-                "lam",
-                "m",
-                "a",
-                "apply_conservation_projection",
+            merge_cols_existing = [
+                col for col in merge_cols
+                if col in cpu.columns and col in gpu.columns
             ]
-
-            merge_cols = [col for col in merge_cols if col in cpu.columns and col in gpu.columns]
 
             merged = pd.merge(
                 cpu,
                 gpu,
-                on=merge_cols,
+                on=merge_cols_existing,
                 suffixes=("_cpu", "_gpu"),
             )
 
             if len(merged) == 0:
+                mismatch_cols = []
+                for col in merge_cols_existing:
+                    cpu_vals = sorted(cpu[col].dropna().unique().tolist())
+                    gpu_vals = sorted(gpu[col].dropna().unique().tolist())
+                    if cpu_vals != gpu_vals:
+                        mismatch_cols.append(
+                            f"{col}: CPU={cpu_vals}, GPU={gpu_vals}"
+                        )
+
+                detail = "; ".join(mismatch_cols) if mismatch_cols else "no shared rows"
                 print(
                     f"No matching CPU/GPU rows for shape={shape}, operator={op}. "
-                    "Check N-list, dtype, Ng, batch_size, lam, m, a."
+                    f"Mismatch: {detail}."
                 )
                 continue
 
             merged = merged.sort_values("N")
             speedup = merged["time_median_s_cpu"] / merged["time_median_s_gpu"]
+            plotted_any = True
 
             plt.semilogx(
                 merged["N"],
@@ -257,6 +270,14 @@ def plot_speedup_vs_N(df):
                 markersize=5,
                 label=operator_label(op),
             )
+
+        if not plotted_any:
+            plt.close()
+            print(
+                f"Skipping speedup plot for {shape}: no matched CPU/GPU rows. "
+                "Run CPU and GPU benchmarks with the same dtype and settings."
+            )
+            continue
 
         plt.axhline(1.0, linestyle="--", linewidth=1.2)
         plt.xlabel(r"$N_{\rm grid}$")
