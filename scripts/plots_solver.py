@@ -230,6 +230,18 @@ def get_snapshot_qspace(traj, q, idx):
     }
 
 
+def grid_edges_from_centers_log_numpy(x):
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1 or x.size < 2:
+        raise ValueError("x must be a one-dimensional grid with at least two points.")
+
+    edges = np.empty(x.size + 1, dtype=float)
+    edges[1:-1] = np.sqrt(x[:-1] * x[1:])
+    edges[0] = x[0] / np.sqrt(x[1] / x[0])
+    edges[-1] = x[-1] * np.sqrt(x[-1] / x[-2])
+    return edges
+
+
 def compute_moments_from_q_snapshot(q, f, a, m, g=1.0):
     q = np.asarray(q, dtype=float)
     f = np.asarray(f, dtype=float)
@@ -240,15 +252,17 @@ def compute_moments_from_q_snapshot(q, f, a, m, g=1.0):
     p = q / a
     E = np.sqrt(p**2 + m**2)
     v = p / E
+    dq = np.diff(grid_edges_from_centers_log_numpy(q))
 
     pref = g / (2.0 * np.pi**2)
-    n = pref * np.trapezoid(q**2 * f, q) / a**3
-    rho = pref * np.trapezoid(q**2 * E * f, q) / a**3
-    P = pref * np.trapezoid(q**2 * (p**2 / (3.0 * E)) * f, q) / a**3
+    n_moment = np.sum(q**2 * f * dq)
+    n = pref * n_moment / a**3
+    rho = pref * np.sum(q**2 * E * f * dq) / a**3
+    P = pref * np.sum(q**2 * (p**2 / (3.0 * E)) * f * dq) / a**3
 
-    avg_v2 = pref * np.trapezoid(q**2 * v**2 * f, q) / a**3 / max(n, 1e-300)
-    avg_p = pref * np.trapezoid(q**2 * p * f, q) / a**3 / max(n, 1e-300)
-    avg_v = pref * np.trapezoid(q**2 * v * f, q) / a**3 / max(n, 1e-300)
+    avg_v2 = np.sum(q**2 * v**2 * f * dq) / max(n_moment, 1e-300)
+    avg_p = np.sum(q**2 * p * f * dq) / max(n_moment, 1e-300)
+    avg_v = np.sum(q**2 * v * f * dq) / max(n_moment, 1e-300)
 
     return {
         "a": a,
@@ -458,6 +472,16 @@ def compute_abundance_along_trajectory(run, cosmo=None, Y_obs=None):
     if Y_obs is not None:
         out["omega_ratio"] = Y / max(float(Y_obs), 1e-300)
     return out
+
+
+def compute_comoving_number_along_trajectory(run, g=1.0):
+    q = np.asarray(run["q"], dtype=float)
+    dq = np.diff(grid_edges_from_centers_log_numpy(q))
+    f_arr = tensor_to_numpy(run["traj"]["f"])
+    a = tensor_to_numpy(run["traj"]["a"])
+    pref = float(g) / (2.0 * np.pi**2)
+    N = pref * np.array([np.sum(q**2 * np.asarray(f, dtype=float) * dq) for f in f_arr])
+    return {"a": np.asarray(a, dtype=float), "N": N}
 
 
 def compute_cbe_abundance(cbe_solution, cosmo=None, Y_obs=None):
@@ -1022,6 +1046,39 @@ def plot_omega_evolution_x(run, cbe_solution=None, cosmo=None, Y_obs=None, ax=No
     ax.legend(frameon=False)
 
     return ax, {"fBE": fbe, "cBE": cbe, "Y_obs": Y_obs}
+
+
+def plot_comoving_number_evolution_x(run, cbe_solution=None, cosmo=None, ax=None):
+    if cosmo is None:
+        cosmo = make_cosmology()
+
+    metadata = run["metadata"]
+    m_chi = float(metadata["m_chi"])
+    fbe = compute_comoving_number_along_trajectory(run)
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7.2, 5.0))
+
+    x_fbe = x_from_a(fbe["a"], m_chi, cosmo)
+    x_fbe, N_fbe = sort_xy_by_x(x_fbe, fbe["N"])
+    ax.loglog(x_fbe, positive_finite_or_nan(N_fbe), label="fBE")
+
+    cbe = None
+    if cbe_solution is not None:
+        cbe_data, _ = cbe_solution
+        a_cbe = np.asarray(cbe_data["a"], dtype=float)
+        N_cbe = np.asarray(cbe_data["N"], dtype=float)
+        x_cbe = x_from_a(a_cbe, m_chi, cosmo)
+        x_cbe, N_cbe = sort_xy_by_x(x_cbe, N_cbe)
+        ax.loglog(x_cbe, positive_finite_or_nan(N_cbe), "--", label="cBE")
+        cbe = {"a": a_cbe, "N": N_cbe}
+
+    ax.set_xlabel(r"$x=m_\chi/T_\mathrm{SM}$")
+    ax.set_ylabel(r"$N=a^3 n$")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(frameon=False)
+
+    return ax, {"fBE": fbe, "cBE": cbe}
 
 
 def plot_equation_of_state(run, cbe=None, ax=None):

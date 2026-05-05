@@ -14,6 +14,127 @@ from collision import (
     C_self_torch_logq_conservative_scatter,
     estimate_gamma_eff_from_current_f,
 )
+from grid_log import grid_edges_from_centers_log
+
+
+@torch.no_grad()
+def distribution_number_energy_moments(f, q, a, m):
+    q = torch.as_tensor(q, device=f.device, dtype=f.dtype)
+    a = torch.as_tensor(a, device=f.device, dtype=f.dtype)
+    m = torch.as_tensor(m, device=f.device, dtype=f.dtype)
+    q_edges = grid_edges_from_centers_log(q)
+    p = q / a
+    dp = (q_edges[1:] - q_edges[:-1]) / a
+    E = torch.sqrt(p * p + m * m)
+    w = p * p * dp
+    return torch.sum(w * f), torch.sum(w * E * f), p, E, dp
+
+
+@torch.no_grad()
+def project_distribution_to_number_energy(
+    f,
+    q,
+    a,
+    m,
+    target_number,
+    target_energy,
+    support_rel=1e-12,
+    floor_rel=1e-30,
+):
+    f = torch.as_tensor(f)
+    target_number = torch.as_tensor(target_number, device=f.device, dtype=f.dtype)
+    target_energy = torch.as_tensor(target_energy, device=f.device, dtype=f.dtype)
+
+    number, energy_moment, p, E, dp = distribution_number_energy_moments(f, q, a, m)
+    if target_number <= 0.0 or target_energy <= 0.0:
+        return torch.zeros_like(f)
+
+    w = p * p * dp
+    f_pos = torch.clamp(f, min=torch.zeros((), device=f.device, dtype=f.dtype))
+
+    support_weight = w * f_pos
+    if torch.sum(support_weight) > torch.finfo(f.dtype).tiny:
+        target_emean = target_energy / target_number
+        Emin = torch.min(E[support_weight > 0.0])
+        Emax = torch.max(E[support_weight > 0.0])
+
+        if target_emean >= Emin and target_emean <= Emax:
+            def tilted_mean(beta_val):
+                expo_val = torch.clamp(beta_val * E, min=-80.0, max=80.0)
+                W_val = support_weight * torch.exp(expo_val)
+                S0_val = torch.sum(W_val)
+                S1_val = torch.sum(W_val * E)
+                return S1_val / torch.clamp(S0_val, min=torch.finfo(f.dtype).tiny)
+
+            beta_lo = torch.as_tensor(-1.0, device=f.device, dtype=f.dtype)
+            beta_hi = torch.as_tensor(1.0, device=f.device, dtype=f.dtype)
+
+            for _ in range(40):
+                if tilted_mean(beta_lo) <= target_emean:
+                    break
+                beta_lo = beta_lo * 2.0
+
+            for _ in range(40):
+                if tilted_mean(beta_hi) >= target_emean:
+                    break
+                beta_hi = beta_hi * 2.0
+
+            beta = torch.zeros((), device=f.device, dtype=f.dtype)
+            for _ in range(80):
+                beta = 0.5 * (beta_lo + beta_hi)
+                mean_E = tilted_mean(beta)
+
+                if mean_E < target_emean:
+                    beta_lo = beta
+                else:
+                    beta_hi = beta
+
+                if torch.abs(mean_E - target_emean) <= 1e-10 * torch.abs(target_emean):
+                    break
+
+            beta = 0.5 * (beta_lo + beta_hi)
+            with torch.no_grad():
+                expo = torch.clamp(beta * E, min=-80.0, max=80.0)
+                W = support_weight * torch.exp(expo)
+                S0 = torch.sum(W)
+
+            if S0 > torch.finfo(f.dtype).tiny:
+                amp = target_number / S0
+                f_mult = f_pos * amp * torch.exp(expo)
+                N_mult, E_mult, *_ = distribution_number_energy_moments(f_mult, q, a, m)
+                rel_N = torch.abs(N_mult - target_number) / torch.clamp(torch.abs(target_number), min=1e-300)
+                rel_E = torch.abs(E_mult - target_energy) / torch.clamp(torch.abs(target_energy), min=1e-300)
+                if rel_N < 1e-8 and rel_E < 1e-8 and torch.isfinite(f_mult).all():
+                    return f_mult
+
+    R_N = number - target_number
+    R_E = energy_moment - target_energy
+
+    fmax = torch.max(torch.abs(f)).clamp(min=torch.finfo(f.dtype).tiny)
+    f_rel = torch.abs(f) / fmax
+    support = f_rel > support_rel
+
+    if torch.count_nonzero(support) < 2:
+        return f
+
+    inv_pen = torch.where(
+        support,
+        torch.clamp(f_rel, min=floor_rel),
+        torch.zeros_like(f_rel),
+    )
+
+    A00 = torch.sum(w * inv_pen)
+    A01 = torch.sum(w * E * inv_pen)
+    A11 = torch.sum(w * E * E * inv_pen)
+
+    det = A00 * A11 - A01 * A01
+    tiny = 100.0 * torch.finfo(f.dtype).eps
+    if torch.abs(det) <= tiny * (torch.abs(A00 * A11) + 1.0):
+        return f
+
+    alpha = (R_N * A11 - R_E * A01) / det
+    beta = (R_E * A00 - R_N * A01) / det
+    return f - inv_pen * (alpha + beta * E)
 
 
 # ============================================================
@@ -537,6 +658,7 @@ def integrate_heun_adaptive_loga_trajectory(
     clip_negative=False,
     clip_tol=0.0,
     stop_on_nonfinite=True,
+    post_step_projector=None,
     out_path_pt=None,
     out_path_dat=None,
     atomic=True,
@@ -619,6 +741,17 @@ def integrate_heun_adaptive_loga_trajectory(
         if clip_negative:
             f_euler = torch.clamp(f_euler, min=clip_tol_t)
 
+        if post_step_projector is not None:
+            f_euler = post_step_projector(
+                f_old=f_old,
+                f_candidate=f_euler,
+                u_old=u_old,
+                u_new=u + du,
+                du=du,
+            )
+            if clip_negative:
+                f_euler = torch.clamp(f_euler, min=clip_tol_t)
+
         if stop_on_nonfinite and (not torch.isfinite(f_euler).all()):
             stop("nonfinite in Euler predictor")
             break
@@ -633,6 +766,17 @@ def integrate_heun_adaptive_loga_trajectory(
 
         if clip_negative:
             f_heun = torch.clamp(f_heun, min=clip_tol_t)
+
+        if post_step_projector is not None:
+            f_heun = post_step_projector(
+                f_old=f_old,
+                f_candidate=f_heun,
+                u_old=u_old,
+                u_new=u + du,
+                du=du,
+            )
+            if clip_negative:
+                f_heun = torch.clamp(f_heun, min=clip_tol_t)
 
         if stop_on_nonfinite and (not torch.isfinite(f_heun).all()):
             stop("nonfinite in Heun update")
@@ -878,6 +1022,32 @@ def run_hybrid_FI_then_adaptive_self(
         pref_FI=1.0,
     )
 
+    def project_full_step_to_source_moments(f_old, f_candidate, u_old, u_new, du):
+        a_old = torch.exp(u_old)
+        a_new = torch.exp(u_new)
+
+        # Source-only update over the same accepted trial step.  Self-scattering
+        # is deliberately excluded because it must not change these moments.
+        k_src_old = a_old * rhs_FI(f_old, a_old)
+        k_src_new = a_new * rhs_FI(f_old, a_new)
+        f_target = f_old + 0.5 * du * (k_src_old + k_src_new)
+
+        target_N, target_E, _, _, _ = distribution_number_energy_moments(
+            f_target,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+
+        return project_distribution_to_number_energy(
+            f=f_candidate,
+            q=q,
+            a=a_new,
+            m=m_chi,
+            target_number=target_N,
+            target_energy=target_E,
+        )
+
     u_grid = torch.linspace(
         math.log(a0),
         math.log(af),
@@ -1022,6 +1192,7 @@ def run_hybrid_FI_then_adaptive_self(
                 clip_negative=clip_negative,
                 clip_tol=clip_tol,
                 stop_on_nonfinite=True,
+                post_step_projector=project_full_step_to_source_moments,
             )
 
             f = traj_heun["f_final"]
@@ -1095,6 +1266,7 @@ def run_hybrid_FI_then_adaptive_self(
             "heun_atol": heun_atol,
             "heun_safety": heun_safety,
             "heun_store_every_accepted": heun_store_every_accepted,
+            "heun_project_source_moments": True,
         },
     }
 

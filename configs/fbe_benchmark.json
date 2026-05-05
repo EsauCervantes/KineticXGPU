@@ -2,7 +2,7 @@
   "device": "cuda",
   "dtype": "float64",
   "save": true,
-  "results_dir": "results/runs/conservative",
+  "results_dir": "results/runs/dense",
   "run_name_prefix": "hybrid_saved",
 
   "cosmology": {
@@ -31,8 +31,8 @@
 
   "collision": {
     "_comment": "below can be dense or conservative",
-    "operator": "conservative",
-    "lambda_self_values": [8.0e-5],
+    "operator": "dense",
+    "lambda_self_values": [1.0e-5,5.0e-5,1.0e-4,2.0e-4,3.0e-4,5.0e-4, 7.0e-4],
     "Ng": 14,
     "batch_size": 16
   },
@@ -49,12 +49,12 @@
 
   "heun": {
     "du_init": 1e-4,
-    "du_min": 1.0e-8,
-    "du_max": 0.02,
+    "du_min": 1.0e-7,
+    "du_max": 0.05,
     "rtol": 1.0e-2,
     "atol": 1.0e-10,
-    "safety": 0.8,
-    "store_every_accepted": 10,
+    "safety": 0.9,
+    "store_every_accepted": 2,
     "print_every_accepted": 20
   },
 
