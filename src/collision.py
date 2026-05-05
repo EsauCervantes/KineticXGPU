@@ -770,8 +770,14 @@ def _C_self_torch_logq_impl(
 
     return C, E, p, dp_vec
 
-C_self_torch_logq = torch.compile(_C_self_torch_logq_impl)
+#C_self_torch_logq = torch.compile(_C_self_torch_logq_impl)
 
+def C_self_torch_logq(*args, **kwargs):
+    if kwargs.get("return_diagnostics", False):
+        return _C_self_torch_logq_impl(*args, **kwargs)
+    return _C_self_torch_logq_compiled(*args, **kwargs)
+
+_C_self_torch_logq_compiled = torch.compile(_C_self_torch_logq_impl)
 
 @torch.no_grad()
 def C_self_torch_logq_conservative_impl(
@@ -1073,8 +1079,17 @@ def C_self_torch_logq_conservative_impl(
 
     return C, E, p, dp_vec
 
-C_self_torch_logq_conservative_scatter = torch.compile(C_self_torch_logq_conservative_impl)
+#C_self_torch_logq_conservative_scatter = torch.compile(C_self_torch_logq_conservative_impl)
 
+_C_self_torch_logq_conservative_scatter_compiled = torch.compile(
+    C_self_torch_logq_conservative_impl
+)
+
+def C_self_torch_logq_conservative_scatter(*args, **kwargs):
+    if kwargs.get("return_diagnostics", False):
+        return C_self_torch_logq_conservative_impl(*args, **kwargs)
+
+    return _C_self_torch_logq_conservative_scatter_compiled(*args, **kwargs)
 
 # ============================================================
 # Generic RHS with optional moment projection

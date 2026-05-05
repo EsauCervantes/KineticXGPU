@@ -3,10 +3,26 @@
 import argparse
 import csv
 import math
+import sys
 import time
 from pathlib import Path
 
 import torch
+
+# ============================================================
+# Paths
+# ============================================================
+
+THIS_FILE = Path(__file__).resolve()
+SCRIPTS_DIR = THIS_FILE.parent
+PROJECT_ROOT = SCRIPTS_DIR.parent
+SRC_DIR = PROJECT_ROOT / "src"
+
+if not SRC_DIR.is_dir():
+    raise FileNotFoundError(f"Expected source directory not found: {SRC_DIR}")
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from grid_log import make_log_q_grid
 from collision import (
@@ -14,14 +30,6 @@ from collision import (
     C_self_torch_logq_conservative_scatter,
 )
 
-
-# ============================================================
-# Paths
-# ============================================================
-
-THIS_FILE = Path(__file__).resolve()
-SRC_DIR = THIS_FILE.parent
-PROJECT_ROOT = SRC_DIR.parent
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 BENCHMARK_DIR = RESULTS_DIR / "CPU-GPU_benchmarks"
@@ -81,6 +89,18 @@ def tensor_to_float(x):
     if torch.is_tensor(x):
         return float(x.detach().cpu())
     return float(x)
+
+
+def resolve_benchmark_output(out_name):
+    out_path = Path(out_name)
+
+    if out_path.is_absolute():
+        return out_path
+
+    if out_path.parent == Path("."):
+        return BENCHMARK_DIR / out_path
+
+    return PROJECT_ROOT / out_path
 
 
 # ============================================================
@@ -514,7 +534,8 @@ def main():
     else:
         out_name = args.out
 
-    out_path = BENCHMARK_DIR / out_name
+    out_path = resolve_benchmark_output(out_name)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     operators = {
         "semi_linearized": C_self_torch_logq,

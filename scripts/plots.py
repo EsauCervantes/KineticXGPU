@@ -37,8 +37,8 @@ plt.rcParams.update(
 # ============================================================
 
 THIS_FILE = Path(__file__).resolve()
-SRC_DIR = THIS_FILE.parent
-PROJECT_ROOT = SRC_DIR.parent
+SCRIPTS_DIR = THIS_FILE.parent
+PROJECT_ROOT = SCRIPTS_DIR.parent
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 BENCHMARK_DIR = RESULTS_DIR / "CPU-GPU_benchmarks"
