@@ -277,7 +277,10 @@ def run_cbe(config, save_override=None):
     physics = config["physics"]
     cbe = config.get("cbe", {})
 
-    cosmo = make_cosmology(config)
+    cbe_config = dict(config)
+    cbe_config["cosmology"] = dict(config.get("cosmology", {}))
+    cbe_config["cosmology"]["use_torch_tables"] = False
+    cosmo = make_cosmology(cbe_config)
     af = float(cbe.get("af", physics.get("af", 30000.0)))
     _, nX_of_a = make_condensate(config, cosmo, af=af)
 

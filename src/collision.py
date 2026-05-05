@@ -1225,7 +1225,10 @@ def estimate_gamma_eff_from_current_f(
 
     Gamma_eff_rms = num / max(den, 1e-300)
     H_star = H_of_a(a_star)
-    H_star_float = float(H_star.detach().cpu())
+    if torch.is_tensor(H_star):
+        H_star_float = float(H_star.detach().cpu())
+    else:
+        H_star_float = float(H_star)
 
     return {
         "Gamma_eff_rms": Gamma_eff_rms,

@@ -2,21 +2,21 @@
   "device": "cuda",
   "dtype": "float64",
   "save": true,
-  "results_dir": "results",
+  "results_dir": "results/runs",
   "run_name_prefix": "hybrid_saved",
 
   "cosmology": {
-    "use_torch_tables": false
+    "use_torch_tables": true
   },
 
   "physics": {
     "a0": 1.0,
-    "af": 60000.0,
+    "af": 1e5,
     "m_chi": 0.5,
     "m_h": 125.0,
     "v_h": 246.0,
     "lambda_portal": 1.08e-11,
-    "m_condensate": 1.2,
+    "m_condensate": 1.8,
     "gamma_condensate": 1.0e-21,
     "n_condensate_initial": 0.02,
     "multiplicity_condensate": 2.0,
@@ -24,16 +24,17 @@
   },
 
   "grid": {
-    "q_min": 0.1,
+    "q_min": 0.5,
     "q_max": 50000.0,
-    "N": 180
+    "N": 190
   },
 
   "collision": {
+    "_comment": "below can be conservative",
     "operator": "dense",
-    "lambda_self_values": [5.0e-6, 1.0e-5, 5.0e-5, 1.0e-4, 5.0e-4],
-    "Ng": 12,
-    "batch_size": 36
+    "lambda_self_values": [1.0e-5, 5.0e-5, 8.0e-5, 1.0e-4, 2.0e-4, 5.0e-4, 8.0e-4],
+    "Ng": 14,
+    "batch_size": 26
   },
 
   "hybrid": {

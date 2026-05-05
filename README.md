@@ -65,7 +65,7 @@ Benchmark settings:
 | Setting | Value |
 |:--|:--|
 | Precision | `float32` |
-| Angular quadrature | \(N_g = 12\) |
+| Angular quadrature | Ng = 12 |
 | Batch size | 16 |
 | Momentum range | \(q/m \in [10^{-3}, 10^{2}]\) |
 | Self-coupling | \(\lambda = 1\) |
@@ -96,34 +96,5 @@ Hardware details for this benchmark:
 | CPU | Intel® Core™ i7-10750H CPU @ 2.60GHz, 6 cores / 12 threads |
 | GPU | NVIDIA Quadro T2000 Mobile / Max-Q |
 | CUDA version | 12.2 |
-
----
-
-## Thermalization Test
-
-A non-equilibrium initial distribution is evolved under the collision operator to test relaxation toward a Maxwell–Boltzmann distribution.
-
-Diagnostics include:
-
-- Convergence of distribution shape  
-- Moment evolution, e.g. \( \langle p^2 \rangle \), \( \langle p^4 \rangle \)  
-- Relative deviation from analytic Maxwell–Boltzmann form  
-
-Output plots are saved under:
-
-```text
-results/thermalization/
-```
-
----
-
-## Neural Surrogate — Work in Progress
-
-Planned extensions:
-
-- Train neural network surrogate for \( C[f] \)  
-- Compare surrogate vs exact operator runtime  
-- Error diagnostics on distribution moments  
-- Investigate operator-learning approaches, such as MLP, DeepONet, and FNO  
 
 ---
