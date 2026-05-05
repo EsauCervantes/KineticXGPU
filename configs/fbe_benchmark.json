@@ -48,13 +48,13 @@
   },
 
   "heun": {
-    "du_init": 1e-3,
-    "du_min": 5.0e-7,
-    "du_max": 0.15,
-    "rtol": 1.0e-3,
-    "atol": 1.0e-12,
-    "safety": 0.95,
-    "store_every_accepted": 1,
+    "du_init": 1e-4,
+    "du_min": 1.0e-8,
+    "du_max": 0.02,
+    "rtol": 1.0e-2,
+    "atol": 1.0e-10,
+    "safety": 0.8,
+    "store_every_accepted": 10,
     "print_every_accepted": 20
   },
 

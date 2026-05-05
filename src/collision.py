@@ -662,7 +662,16 @@ def _C_self_torch_logq_impl(
         wR = torch.clamp(wR, 0.0, 1.0)
         wL = 1.0 - wR
         
-        ftil_interp = wL * f[jL] + wR * f[jR]
+        # Log-linear interpolation in energy preserves detailed balance for
+        # a Maxwell-Boltzmann shape, log f = const - E/T, much better than
+        # linear interpolation of f itself.
+        f_floor = torch.clamp(
+            torch.max(torch.abs(f)) * 1e-300,
+            min=torch.finfo(dtype).tiny,
+        )
+        logfL = torch.log(torch.clamp(f[jL], min=f_floor))
+        logfR = torch.log(torch.clamp(f[jR], min=f_floor))
+        ftil_interp = torch.exp(wL * logfL + wR * logfR)
         
         ftil = torch.where(
             inside_q,
@@ -706,7 +715,7 @@ def _C_self_torch_logq_impl(
             total_phys = total_phys + phys_ptil.to(dtype).sum()
 
             outside = phys_ptil & (~inside_q)
-            W = F.abs() * fi.abs()
+            W = F.abs() * (torch.abs(f_n * f_m) + torch.abs(fi * ftil))
             total_outside_weight = total_outside_weight + (
                 W.masked_fill(~outside, 0.0)
             ).sum()
