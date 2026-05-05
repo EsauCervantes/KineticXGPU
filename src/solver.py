@@ -579,6 +579,10 @@ def integrate_heun_adaptive_loga_trajectory(
         "n_reject": 0,
         "u_last": u.detach().clone(),
         "a_last": torch.exp(u.detach().clone()),
+        "last_err": None,
+        "last_du": None,
+        "last_reject_factor": None,
+        "last_proposed_du": None,
     }
 
     def rhs_u(f_state, u_state):
@@ -646,6 +650,8 @@ def integrate_heun_adaptive_loga_trajectory(
             f = f_heun
             u = u + du
             n_accept += 1
+            status["last_err"] = err.detach().clone()
+            status["last_du"] = du.detach().clone()
 
             if (n_accept % store_every_accepted == 0) or (u >= u_end):
                 a_hist.append(torch.exp(u.detach().clone()))
@@ -669,7 +675,12 @@ def integrate_heun_adaptive_loga_trajectory(
         else:
             n_reject += 1
             factor = max(shrink_min, safety * float(err) ** (-0.5))
+            du_old = du.detach().clone()
             du = du * torch.as_tensor(factor, device=device, dtype=dtype)
+            status["last_err"] = err.detach().clone()
+            status["last_du"] = du_old
+            status["last_reject_factor"] = factor
+            status["last_proposed_du"] = du.detach().clone()
 
             f = f_old
             u = u_old

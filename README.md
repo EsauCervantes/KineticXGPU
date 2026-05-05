@@ -37,11 +37,10 @@ The objective is to enable faster iterative studies of kinetic and thermalizatio
 
 ## Notebooks
 
-Explore notebooks:
+Explore the notebook to see results:
 
 ```text
-notebooks/01_benchmark.ipynb
-notebooks/02_thermalization.ipynb
+notebooks/plots.ipynb
 ```
 
 ---

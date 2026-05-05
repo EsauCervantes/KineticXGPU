@@ -1,11 +1,11 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.interpolate import PchipInterpolator
+from scipy.optimize import brentq
+from scipy.special import kve
 
 from thermodynamics import (
     N_eq,
-    rho_eq,
-    drho_eq_dT,
     Gamma_htophiphi,
     Gamma_htophiphi_energy
 )
@@ -73,6 +73,50 @@ def condensate_energy_source(nX, Gamma_X, E0, multiplicity=1.0):
     return multiplicity * Gamma_X * nX * E0
 
 
+def mean_energy_MB(T, m):
+    T = float(T)
+    m = float(m)
+    if T <= 0.0:
+        return m
+
+    z = m / T
+    if z > 100.0:
+        return m + 1.5 * T + 1.875 * T**2 / m
+
+    k1 = kve(1, z)
+    k2 = kve(2, z)
+    if not np.isfinite(k1) or not np.isfinite(k2) or k2 <= 0.0:
+        return m + 1.5 * T + 1.875 * T**2 / m
+
+    return m * k1 / k2 + 3.0 * T
+
+
+def temperature_from_mean_energy(ebar, m):
+    ebar = float(ebar)
+    m = float(m)
+
+    if not np.isfinite(ebar) or ebar <= m:
+        return max(2.0 * max(ebar - m, 0.0) / 3.0, 1e-300)
+    if ebar <= m * (1.0 + 1e-10):
+        return max(2.0 * (ebar - m) / 3.0, 1e-300)
+
+    hi = max(m, ebar / 3.0, 1e-12)
+    while mean_energy_MB(hi, m) < ebar:
+        hi *= 2.0
+
+    lo = max(m * 1e-10, 1e-12)
+    if mean_energy_MB(lo, m) >= ebar:
+        return max(2.0 * (ebar - m) / 3.0, 1e-300)
+
+    return brentq(lambda T: mean_energy_MB(T, m) - ebar, lo, hi, xtol=1e-12, rtol=1e-10)
+
+
+def temperature_from_NR(N, R, m):
+    N = max(float(N), 1e-300)
+    R = max(float(R), 1e-300)
+    return temperature_from_mean_energy(R / N, m)
+
+
 def solve_free_in_loga(
     cosmo,
     ms,
@@ -99,6 +143,11 @@ def solve_free_in_loga(
         N(a) = const
         T(a) = T_match * (a_match / a)^2
     for a > a_match.
+
+    Internally the integrator evolves N=a^3 n and R=a^3 rho.  T is inferred
+    from the exact Maxwell-Boltzmann relation rho/n=<E>(T).  This avoids the
+    ill-conditioned direct dT equation in the relativistic-to-nonrelativistic
+    transition.
     """
     if a_match is not None:
         if a_match <= ai:
@@ -112,9 +161,10 @@ def solve_free_in_loga(
 
     def rhs_u(u, y):
         a = np.exp(u)
-        N, Ts = y
-
-        Ts = max(Ts, 1e-300)
+        N, R = y
+        N = max(float(N), 1e-300)
+        R = max(float(R), 1e-300)
+        Ts = temperature_from_NR(N, R, ms)
 
         Tsm = float(cosmo.T_of_a(a))
         Hsm = float(cosmo.H_of_a(a))
@@ -143,37 +193,22 @@ def solve_free_in_loga(
             )
 
         dN_da = (a**2 / Hsm) * (src1_N + src2_N)
-
-        Neq = max(N_eq(a, Ts, ms), 1e-300)
-        rho = rho_eq(Ts, ms)
-        drho = drho_eq_dT(Ts, ms)
-
-        numerator = (
-            (src1_E + src2_E) / (a * Hsm)
-            - (3.0 / a) * (N * Ts / a**3)
-            - (dN_da / Neq) * rho
-        )
-
-        denominator = (
-            (N / Neq) * drho
-            - a**3 * (rho / (Ts * Neq))**2 * N
-        )
-
-        dTs_da = numerator / denominator
+        dR_da = (a**2 / Hsm) * (src1_E + src2_E) - 3.0 * N * Ts / a
 
         dN_du = a * dN_da
-        dTs_du = a * dTs_da
+        dR_du = a * dR_da
 
-        return [dN_du, dTs_du]
+        return [dN_du, dR_du]
 
     Tini = float(cosmo.T_of_a(ai))
     Ts_ini = xi_inf * Tini
     N_ini = N_eq(ai, Ts_ini, ms)
+    R_ini = N_ini * mean_energy_MB(Ts_ini, ms)
 
     sol = solve_ivp(
         rhs_u,
         (ui, uf),
-        [N_ini, Ts_ini],
+        [N_ini, R_ini],
         method=method,
         dense_output=True,
         rtol=rtol,
@@ -183,6 +218,26 @@ def solve_free_in_loga(
 
     if not sol.success:
         raise RuntimeError(f"ODE solve failed: {sol.message}")
+
+    raw_dense = sol.sol
+    raw_y = sol.y.copy()
+
+    def dense_NT(u):
+        scalar_input = np.ndim(u) == 0
+        vals = raw_dense(u)
+        vals_2d = vals.reshape(2, 1) if vals.ndim == 1 else vals
+        N_vals = np.maximum(vals_2d[0], 1e-300)
+        R_vals = np.maximum(vals_2d[1], 1e-300)
+        T_vals = np.array([temperature_from_NR(N, R, ms) for N, R in zip(N_vals, R_vals)])
+        out = np.vstack([N_vals, T_vals])
+        return out[:, 0] if scalar_input else out
+
+    T_grid = np.array([temperature_from_NR(N, R, ms) for N, R in raw_y.T])
+    sol._raw_NR_y = raw_y
+    sol._raw_NR_dense = raw_dense
+    sol._cbe_variables = "N_R"
+    sol.y = np.vstack([np.maximum(raw_y[0], 1e-300), T_grid])
+    sol.sol = dense_NT
 
     # attach tail metadata for piecewise continuation
     sol._piecewise_tail = None

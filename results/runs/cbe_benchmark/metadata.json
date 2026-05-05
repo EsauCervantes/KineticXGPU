@@ -1,0 +1,30 @@
+{
+  "Y_obs": 8.743582702003838e-10,
+  "Y_solver": 8.807440071827642e-10,
+  "af": 100000.0,
+  "cbe": {
+    "af": 100000.0,
+    "atol": 1e-09,
+    "condensate_n_eval": 4000,
+    "condensate_zero_rel": 1e-14,
+    "max_step_u": 0.001,
+    "method": "Radau",
+    "rtol": 1e-06
+  },
+  "created_at": "2026-05-05T17:07:15",
+  "mode": "cbe",
+  "physics": {
+    "a0": 1.0,
+    "af": 100000.0,
+    "gamma_condensate": 1e-21,
+    "lambda_portal": 1.08e-11,
+    "m_chi": 0.5,
+    "m_condensate": 1.8,
+    "m_h": 125.0,
+    "multiplicity_condensate": 2.0,
+    "n_condensate_initial": 0.02,
+    "v_h": 246.0,
+    "xi_inf": 0.0001
+  },
+  "ratio": 1.0073033414333885
+}

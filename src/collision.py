@@ -115,8 +115,8 @@ def energy(p, m):
 def _leggauss_torch(Ng, device, dtype):
     x, w = np.polynomial.legendre.leggauss(Ng)
     return (
-        torch.tensor(x, device=device, dtype=dtype),
-        torch.tensor(w, device=device, dtype=dtype),
+        torch.as_tensor(x, device=device, dtype=dtype),
+        torch.as_tensor(w, device=device, dtype=dtype),
     )
 
 

@@ -2,7 +2,7 @@
   "device": "cuda",
   "dtype": "float64",
   "save": true,
-  "results_dir": "results/runs",
+  "results_dir": "results/runs/conservative",
   "run_name_prefix": "hybrid_saved",
 
   "cosmology": {
@@ -25,16 +25,16 @@
 
   "grid": {
     "q_min": 0.5,
-    "q_max": 50000.0,
-    "N": 190
+    "q_max": 500000.0,
+    "N": 200
   },
 
   "collision": {
-    "_comment": "below can be conservative",
-    "operator": "dense",
-    "lambda_self_values": [1.0e-5, 5.0e-5, 8.0e-5, 1.0e-4, 2.0e-4, 5.0e-4, 8.0e-4],
+    "_comment": "below can be dense or conservative",
+    "operator": "conservative",
+    "lambda_self_values": [8.0e-5],
     "Ng": 14,
-    "batch_size": 26
+    "batch_size": 16
   },
 
   "hybrid": {
@@ -48,14 +48,14 @@
   },
 
   "heun": {
-    "du_init": 1.0e-3,
-    "du_min": 1.0e-5,
-    "du_max": 0.1,
-    "rtol": 1.0e-2,
+    "du_init": 1e-3,
+    "du_min": 5.0e-7,
+    "du_max": 0.15,
+    "rtol": 1.0e-3,
     "atol": 1.0e-12,
     "safety": 0.95,
-    "store_every_accepted": 20,
-    "print_every_accepted": 30
+    "store_every_accepted": 1,
+    "print_every_accepted": 20
   },
 
   "stability": {
@@ -64,7 +64,7 @@
   },
 
   "cbe": {
-    "af": 30000.0,
+    "af": 1e5,
     "method": "Radau",
     "rtol": 1.0e-6,
     "atol": 1.0e-9,
