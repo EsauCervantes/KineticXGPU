@@ -563,21 +563,15 @@ def _F_kernel_batch_constant_M2_vec(pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc
 
 
 # ============================================================
-# Semi-linearized / hybrid self-collision
+# Self-collision
 # ============================================================
 
 @torch.no_grad()
-def C_self_torch_logq(
+def _C_self_torch_logq_impl(
     f, a,
     q, logq0, dlogq, log_space,
     m, lam,
     Ng=16, batch_size=16,
-    use_cbe_shape=True,
-    apply_conservation_projection=False,
-    C_src_for_feedback=None,
-    dndt_target=None,
-    drhodt_target=None,
-    gchi=1.0,
     return_diagnostics=False,
 ):
     f = torch.as_tensor(f)
@@ -609,26 +603,6 @@ def C_self_torch_logq(
     # Symmetry factor for identical particles in the integrated pair.
     pref0 = 0.5
     C = torch.empty_like(f)
-
-    if use_cbe_shape:
-        if not _CBE_READY:
-            raise RuntimeError("Call init_mb_target_from_cbe(...) first.")
-
-        T_target = float(_CBE_TS(float(a)))
-        n_current = number_density_from_f_logq(
-            f=f,
-            q=q,
-            a=a,
-            gchi=gchi,
-        )
-        z_eff = z_eff_from_current_n_on_grid(
-            q_grid=q,
-            a=a,
-            m=m,
-            n_current=n_current,
-            T_target=T_target,
-            gchi=gchi,
-        )
 
     if return_diagnostics:
         total_valid = torch.zeros((), device=device, dtype=dtype)
@@ -665,53 +639,36 @@ def C_self_torch_logq(
         inside_q = (qtil >= q[0]) & (qtil <= q[-1])
 
         ftil = torch.zeros_like(qtil)
-
-        if torch.any(inside_q):
-            qv = qtil[inside_q]
-
-            if use_cbe_shape:
-                ftil[inside_q] = f_MB_from_z_at_q(
-                    q_eval=qv,
-                    a=a,
-                    m=m,
-                    z_eff=z_eff,
-                    T_target=T_target,
-                )
-            else:
-                # ----------------------------------------------------
-                # Energy-linear interpolation.
-                #
-                # Choose weights wL, wR such that:
-                #
-                #     wL + wR = 1
-                #     wL E(qL) + wR E(qR) = E(qv)
-                #
-                # This is preferable to q-linear interpolation after
-                # switching to relativistic energy conservation.
-                # ----------------------------------------------------
-                jR = torch.searchsorted(q, qv, right=False)
-                jR = torch.clamp(jR, 1, q.numel() - 1)
-                jL = jR - 1
-
-                qL = q[jL]
-                qR = q[jR]
-
-                EL = torch.sqrt((qL / a) ** 2 + m ** 2)
-                ER = torch.sqrt((qR / a) ** 2 + m ** 2)
-                EQ = torch.sqrt((qv / a) ** 2 + m ** 2)
-
-                denom = ER - EL
-                tiny = 10.0 * torch.finfo(dtype).eps
-
-                wR = torch.where(
-                    torch.abs(denom) > tiny,
-                    (EQ - EL) / denom,
-                    torch.zeros_like(EQ),
-                )
-                wR = torch.clamp(wR, 0.0, 1.0)
-                wL = 1.0 - wR
-
-                ftil[inside_q] = wL * f[jL] + wR * f[jR]
+        
+        
+        qv_safe = torch.clamp(qtil, min=q[0], max=q[-1])#This avoids if evaliation
+        jR = torch.searchsorted(q, qv_safe, right=False)
+        jR = torch.clamp(jR, 1, q.numel() - 1)
+        jL = jR - 1
+        qL = q[jL]
+        qR = q[jR]
+        
+        EL = torch.sqrt((qL / a) ** 2 + m ** 2)
+        ER = torch.sqrt((qR / a) ** 2 + m ** 2)
+        EQ = torch.sqrt((qv_safe / a) ** 2 + m ** 2)
+        denom = ER - EL
+        tiny = 10.0 * torch.finfo(dtype).eps
+        
+        wR = torch.where(
+            torch.abs(denom) > tiny,
+            (EQ - EL) / denom,
+            torch.zeros_like(EQ),)
+        
+        wR = torch.clamp(wR, 0.0, 1.0)
+        wL = 1.0 - wR
+        
+        ftil_interp = wL * f[jL] + wR * f[jR]
+        
+        ftil = torch.where(
+            inside_q,
+            ftil_interp,
+            torch.zeros_like(ftil_interp),
+            )
 
         F = _F_kernel_batch_constant_M2_vec(
             pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0
@@ -813,22 +770,16 @@ def C_self_torch_logq(
 
     return C, E, p, dp_vec
 
-# optional alias
-#C_self_torch_logq_full = C_self_torch_logq
+C_self_torch_logq = torch.compile(_C_self_torch_logq_impl)
 
 
 @torch.no_grad()
-def C_self_torch_logq_conservative_scatter(
+def C_self_torch_logq_conservative_impl(
     f, a,
     q, logq0, dlogq, log_space,
     m, lam,
     Ng=16, batch_size=16,
-    use_cbe_shape=False,   # ignored: this version uses the actual f
     apply_conservation_projection=False,
-    C_src_for_feedback=None,
-    dndt_target=None,
-    drhodt_target=None,
-    gchi=1.0,
     return_diagnostics=False,
     f_floor_rel=1e-300,
 ):
@@ -1122,6 +1073,9 @@ def C_self_torch_logq_conservative_scatter(
 
     return C, E, p, dp_vec
 
+C_self_torch_logq_conservative_scatter = torch.compile(C_self_torch_logq_conservative_impl)
+
+
 # ============================================================
 # Generic RHS with optional moment projection
 # ============================================================
@@ -1283,7 +1237,7 @@ def estimate_gamma_eff_from_current_f(
         dlogq=dlogq,
         log_space=log_space,
         m=m_chi,
-        return_diagnostics=True,
+        return_diagnostics=False,
     )
 
     C_self_np = C_self_t.detach().cpu().numpy()
@@ -1297,12 +1251,12 @@ def estimate_gamma_eff_from_current_f(
     den = np.sum(w_np * np.abs(f_np))
 
     Gamma_eff_rms = num / max(den, 1e-300)
-    H_star = float(H_of_a(a_star))
+    H_star = H_of_a(a_star)
+    H_star_float = float(H_star.detach().cpu())
 
     return {
         "Gamma_eff_rms": Gamma_eff_rms,
-        "H": H_star,
-        "Gamma_over_H": Gamma_eff_rms / H_star,
+        "H": H_star_float,
+        "Gamma_over_H": Gamma_eff_rms / H_star_float,
         "diag": diag,
-        "C_self": C_self_t,
-    }
+        "C_self": C_self_t}

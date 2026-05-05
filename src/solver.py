@@ -811,7 +811,6 @@ def run_hybrid_FI_then_adaptive_self(
         lam=lam_self,
         Ng=Ng,
         batch_size=batch_size,
-        use_cbe_shape=False,
         return_diagnostics=False,
     )
 

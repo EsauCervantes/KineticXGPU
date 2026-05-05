@@ -357,3 +357,32 @@ def is_log_uniform_grid(x, *, log_space="log10", rtol=1e-12, atol=1e-15):
     dlogx = torch.mean(diffs)
     uniform = torch.allclose(diffs, dlogx, rtol=rtol, atol=atol)
     return bool(uniform), dlogx
+
+
+def interp1d_monotonic_torch(x_grid, y_grid, x, *, clamp=True):
+    x_grid = torch.as_tensor(x_grid)
+    y_grid = torch.as_tensor(y_grid, device=x_grid.device, dtype=x_grid.dtype)
+    x = torch.as_tensor(x, device=x_grid.device, dtype=x_grid.dtype)
+
+    if clamp:
+        x_safe = torch.clamp(x, x_grid[0], x_grid[-1])
+    else:
+        x_safe = x
+
+    jR = torch.searchsorted(x_grid, x_safe, right=False)
+    jR = torch.clamp(jR, 1, x_grid.numel() - 1)
+    jL = jR - 1
+
+    xL = x_grid[jL]
+    xR = x_grid[jR]
+    yL = y_grid[jL]
+    yR = y_grid[jR]
+
+    t = (x_safe - xL) / (xR - xL)
+    y = (1.0 - t) * yL + t * yR
+
+    if not clamp:
+        inside = (x >= x_grid[0]) & (x <= x_grid[-1])
+        y = torch.where(inside, y, torch.zeros_like(y))
+
+    return y

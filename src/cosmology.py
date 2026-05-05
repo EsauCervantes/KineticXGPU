@@ -1,8 +1,11 @@
 from pathlib import Path
+from grid_log import interp1d_monotonic_torch
 
 import numpy as np
 from scipy.interpolate import CubicSpline, PchipInterpolator
 from scipy.special import kn
+import torch
+
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -123,3 +126,62 @@ class VariableGCosmology:
 
     def H_of_a(self, a):
         return self.H_of_T(self.T_of_a(a))
+    
+    def build_torch_tables(self, device=None, dtype=torch.float64):
+        T_grid = np.logspace(np.log10(self.Tmin), np.log10(self.Trh), self.npts)
+        s_rh = self.entropy_density(self.Trh)
+        s_grid = self.entropy_density(T_grid)
+
+        a_grid = self.ai * (s_rh / s_grid) ** (1.0 / 3.0)
+
+        order = np.argsort(a_grid)
+        a_grid = a_grid[order]
+        T_grid = T_grid[order]
+
+        H_grid = self.H_of_T(T_grid)
+
+        self.loga_table_torch = torch.tensor(np.log(a_grid), device=device, dtype=dtype)
+        self.logT_table_torch = torch.tensor(np.log(T_grid), device=device, dtype=dtype)
+        self.logH_table_torch = torch.tensor(np.log(H_grid), device=device, dtype=dtype)
+
+        return self
+
+    def T_of_a_torch(self, a):
+        if not hasattr(self, "loga_table_torch"):
+            raise RuntimeError("Call build_torch_tables(device, dtype) first.")
+
+        loga = torch.log(torch.as_tensor(
+            a,
+            device=self.loga_table_torch.device,
+            dtype=self.loga_table_torch.dtype,
+        ))
+
+        logT = interp1d_monotonic_torch(
+            self.loga_table_torch,
+            self.logT_table_torch,
+            loga,
+            clamp=True,
+        )
+
+        return torch.exp(logT)
+
+    def H_of_a_torch(self, a):
+        if not hasattr(self, "loga_table_torch"):
+            raise RuntimeError("Call build_torch_tables(device, dtype) first.")
+
+        loga = torch.log(torch.as_tensor(
+            a,
+            device=self.loga_table_torch.device,
+            dtype=self.loga_table_torch.dtype,
+        ))
+
+        logH = interp1d_monotonic_torch(
+            self.loga_table_torch,
+            self.logH_table_torch,
+            loga,
+            clamp=True,
+        )
+
+        return torch.exp(logH)
+    
+    
