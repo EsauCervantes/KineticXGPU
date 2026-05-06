@@ -641,7 +641,7 @@ def _C_self_torch_logq_impl(
         ftil = torch.zeros_like(qtil)
         
         
-        qv_safe = torch.clamp(qtil, min=q[0], max=q[-1])#This avoids if evaliation
+        qv_safe = torch.clamp(qtil, min=q[0], max=q[-1])#This avoids if evaluation
         jR = torch.searchsorted(q, qv_safe, right=False)
         jR = torch.clamp(jR, 1, q.numel() - 1)
         jL = jR - 1
@@ -692,7 +692,7 @@ def _C_self_torch_logq_impl(
             torch.zeros_like(ftil),
         )
 
-        # ------------------------------------------------------------
+        # ----------------------------
         # Convention correction:
         #
         # The self-scattering integral constructed here follows the
@@ -706,7 +706,7 @@ def _C_self_torch_logq_impl(
         #     df_i/dt
         #
         # Therefore divide by E_i before returning C.
-        # ------------------------------------------------------------
+        # -----------------------------------------------------------
         C_batch_paper = pref0 * torch.sum(w_nm * F * gain_loss, dim=(1, 2))
         C[start:end] = C_batch_paper / E[ib]
 
