@@ -64,7 +64,7 @@
   },
 
   "cbe": {
-    "af": 1e5,
+    "af": 1.5e5,
     "method": "Radau",
     "rtol": 1.0e-6,
     "atol": 1.0e-9,
