@@ -27,7 +27,7 @@ The objective is to enable faster iterative studies of kinetic and thermalizatio
 
 ## Features
 
-- PyTorch implementation of a discretized collision operator \( C[f] \) for self scattering in  the collision.py
+- PyTorch implementation of a discretized collision operator \( C[f] \) for self scattering in  the collision.py file
 - CPU and GPU execution modes  
 - Timing benchmarks and speedup measurements  
 - Diagnostics for thermalization toward Maxwell–Boltzmann distributions  
