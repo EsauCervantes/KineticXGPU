@@ -67,8 +67,8 @@ Benchmark settings:
 | Precision | `float32` |
 | Angular quadrature | Ng = 12 |
 | Batch size | 16 |
-| Momentum range | \(q/m \in [10^{-3}, 10^{2}]\) |
-| Self-coupling | \(\lambda = 1\) |
+| Momentum range | qmin=1e-3, qmax=1e2 |
+| Self-coupling | lambda = 1 |
 | Conservation projection | Enabled |
 
 | Grid size \(N\) | CPU runtime [ms] | GPU runtime [ms] | GPU speedup |
