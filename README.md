@@ -1,5 +1,5 @@
 # KineticXGPU  
-### GPU-Accelerated Boltzmann Collision Operator with Neural Surrogate
+### GPU-Accelerated Boltzmann Collision Operator
 
 KineticXGPU is a PyTorch-based implementation of a Boltzmann collision operator designed for high-performance kinetic simulations. The project focuses on:
 
