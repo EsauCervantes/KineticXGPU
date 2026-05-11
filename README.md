@@ -3,7 +3,7 @@
 
 **KineticXGPU achieves up to 9.5× GPU speedup** over CPU for evaluating discretized Boltzmann collision operators — enabling faster iterative studies of thermalization and non-equilibrium dynamics in the early universe.
 
-Built with PyTorch. Designed for researchers working on dark matter kinetics, neutrino decoupling, or any problem where the collision term is the computational bottleneck.
+Built with PyTorch. Designed for researchers working on dark matter at the phase-space level, or any problem where the collision term is the computational bottleneck.
 
 ---
 
