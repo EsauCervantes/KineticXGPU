@@ -1,75 +1,13 @@
-# KineticXGPU  
-### GPU-Accelerated Boltzmann Collision Operator
+# KineticXGPU
+### GPU-Accelerated Boltzmann Collision Operator for Cosmological Kinetic Theory
 
-KineticXGPU is a PyTorch-based implementation of a Boltzmann collision operator designed for high-performance kinetic simulations. The project focuses on:
+**KineticXGPU achieves up to 9.5× GPU speedup** over CPU for evaluating discretized Boltzmann collision operators — enabling faster iterative studies of thermalization and non-equilibrium dynamics in the early universe.
 
-- GPU acceleration of collision term evaluation  
-- Benchmarking CPU vs GPU performance  
-- Studying relaxation toward Maxwell–Boltzmann equilibrium
-  
-This repository is part of ongoing work on accelerating kinetic simulations relevant to non-equilibrium dynamics in the early universe.
+Built with PyTorch. Designed for researchers working on dark matter kinetics, neutrino decoupling, or any problem where the collision term is the computational bottleneck.
 
 ---
 
-## Motivation
-
-The collision term is typically the computational bottleneck in Boltzmann equation solvers. The Boltzmann equation has the structure  df/dt = C[f], where C[f] is an integral operator acting on the distribution function f. For self-scattering collisions, after discretizing the momentum grid leads to f_i = f(p_i), the self-scattering collision operator can be written schematically as a double sum over f, resembling a bilinear form for 2 -> 2 self-scattering. This structure can be optimized using GPU tensor operations, which is the aim of the code.
-
-This project explores:
-
-- Efficient tensorized implementations in PyTorch  
-- GPU acceleration strategies  
-- Performance benchmarking
-
-The objective is to enable faster iterative studies of kinetic and thermalization processes.
-
----
-
-## Features
-
-- PyTorch implementation of a discretized collision operator C[f] for self scattering in the collision.py file
-- CPU and GPU execution modes  
-- Timing benchmarks and speedup measurements  
-- Diagnostics for thermalization toward Maxwell–Boltzmann distributions  
-
-- An adaptive solver in solver.py is provided. The solver is still being optimized. Different strategies are being explored right now to prevent the constant CPU-GPU overhead from time-step integration. 
-
----
-
-## Notebooks
-
-Explore the notebook to see results:
-
-```text
-notebooks/plots.ipynb
-```
-
----
-
-## Benchmarking Methodology
-
-Performance is measured as:
-
-- Wall-clock time per collision-operator evaluation  
-- Median over multiple runs  
-- Explicit CUDA synchronization when benchmarking GPU  
-- Fixed angular quadrature and batch size  
-
-The table below summarizes the benchmark results generated from the CSV files in
-`results/CPU-GPU_benchmarks/`. Each entry reports the average, over the three
-test distributions (`MB_T_eq_m`, `two_bump`, and `hot_tail`), of the median
-runtime for one dense self-scattering collision-operator evaluation.
-
-Benchmark settings:
-
-| Setting | Value |
-|:--|:--|
-| Precision | `float32` |
-| Angular quadrature | Ng = 12 |
-| Batch size | 16 |
-| Momentum range | qmin=1e-3, qmax=1e2 |
-| Self-coupling | lambda = 1 |
-| Conservation projection | Enabled |
+## Benchmark Results
 
 | Grid size \(N\) | CPU runtime [ms] | GPU runtime [ms] | GPU speedup |
 |----------------:|-----------------:|-----------------:|------------:|
@@ -85,16 +23,58 @@ Benchmark settings:
 | 224             | 4716.6           | 505.8            | 9.33×       |
 | 256             | 7036.9           | 739.3            | 9.52×       |
 
-The code also contains a conservative deposition variant of the self-scattering
-operator for tests where exact discrete number and energy conservation are the
-primary concern.
+Runtimes are wall-clock medians over multiple runs (float32, Ng=12 angular quadrature, batch size 16). Speedup grows with grid size, reaching ~9.5× at N=256.
 
-Hardware details for this benchmark:
-
+**Hardware:**
 | Component | Specification |
 |:--|:--|
-| CPU | Intel® Core™ i7-10750H CPU @ 2.60GHz, 6 cores / 12 threads |
+| CPU | Intel® Core™ i7-10750H @ 2.60GHz, 6 cores / 12 threads |
 | GPU | NVIDIA Quadro T2000 Mobile / Max-Q |
 | CUDA version | 12.2 |
 
 ---
+
+## What This Solves
+
+The collision term C[f] in df/dt = C[f] is typically the computational bottleneck in Boltzmann solvers. For 2→2 self-scattering, the discretized operator takes a bilinear form over momentum grids — a structure naturally suited to GPU tensor operations. KineticXGPU exploits this with PyTorch, making grid refinement studies that were previously slow practical to run iteratively.
+
+---
+
+## Features
+
+- PyTorch implementation of a discretized collision operator C[f] for self-scattering (`collision.py`)
+- CPU and GPU execution modes
+- Timing benchmarks and speedup measurements
+- Diagnostics for thermalization toward Maxwell–Boltzmann distributions
+- Conservative deposition variant for exact discrete number and energy conservation
+- Adaptive solver (`solver.py`). Different strategies are being explored right now to prevent the constant CPU-GPU overhead from time-step integration. 
+
+---
+
+## Notebooks
+
+Explore results and diagnostics:
+
+```text
+notebooks/plots.ipynb
+```
+
+---
+
+## Benchmarking Methodology
+
+Performance is measured as:
+- Wall-clock time per collision-operator evaluation
+- Median over multiple runs
+- Explicit CUDA synchronization when benchmarking GPU
+- Fixed angular quadrature and batch size
+
+Benchmark settings:
+| Setting | Value |
+|:--|:--|
+| Precision | `float32` |
+| Angular quadrature | Ng = 12 |
+| Batch size | 16 |
+| Momentum range | qmin=1e-3, qmax=1e2 |
+| Self-coupling | lambda = 1 |
+| Conservation projection | Enabled |
