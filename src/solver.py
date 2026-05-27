@@ -659,6 +659,8 @@ def integrate_heun_adaptive_loga_trajectory(
     clip_tol=0.0,
     stop_on_nonfinite=True,
     post_step_projector=None,
+    accepted_step_diagnostics=None,
+    diagnostics_every_accepted=1,
     out_path_pt=None,
     out_path_dat=None,
     atomic=True,
@@ -671,6 +673,8 @@ def integrate_heun_adaptive_loga_trajectory(
         raise ValueError("a0 and a1 must be > 0.")
     if du_init <= 0 or du_min <= 0 or du_max <= 0:
         raise ValueError("du_init, du_min, du_max must be > 0.")
+    if accepted_step_diagnostics is not None and diagnostics_every_accepted <= 0:
+        raise ValueError("diagnostics_every_accepted must be > 0 when diagnostics are enabled.")
 
     f = f0.clone()
     device, dtype = f.device, f.dtype
@@ -692,6 +696,7 @@ def integrate_heun_adaptive_loga_trajectory(
 
     n_accept = 0
     n_reject = 0
+    diagnostics_hist = {}
 
     status = {
         "completed": True,
@@ -711,6 +716,22 @@ def integrate_heun_adaptive_loga_trajectory(
         a_state = torch.exp(u_state)
         return a_state * rhs(f_state, a_state)
 
+    def append_diagnostics(diag):
+        if not diag:
+            return
+
+        for key, value in diag.items():
+            if value is None:
+                continue
+
+            if not torch.is_tensor(value):
+                if isinstance(value, (bool, int, float, np.integer, np.floating)):
+                    value = torch.as_tensor(value, device=device, dtype=dtype)
+                else:
+                    continue
+
+            diagnostics_hist.setdefault(key, []).append(value.detach().clone())
+
     def stop(reason):
         status["completed"] = False
         status["stopped_early"] = True
@@ -729,6 +750,7 @@ def integrate_heun_adaptive_loga_trajectory(
 
         f_old = f.detach().clone()
         u_old = u.detach().clone()
+        u_new = u + du
 
         k1 = rhs_u(f, u)
 
@@ -736,17 +758,23 @@ def integrate_heun_adaptive_loga_trajectory(
             stop("nonfinite in k1")
             break
 
-        f_euler = f + du * k1
+        f_euler_raw = f + du * k1
+        f_euler_after_clipping = f_euler_raw
 
         if clip_negative:
-            f_euler = torch.clamp(f_euler, min=clip_tol_t)
+            f_euler_after_clipping = torch.clamp(
+                f_euler_after_clipping,
+                min=clip_tol_t,
+            )
+
+        f_euler = f_euler_after_clipping
 
         if post_step_projector is not None:
             f_euler = post_step_projector(
                 f_old=f_old,
                 f_candidate=f_euler,
                 u_old=u_old,
-                u_new=u + du,
+                u_new=u_new,
                 du=du,
             )
             if clip_negative:
@@ -756,23 +784,29 @@ def integrate_heun_adaptive_loga_trajectory(
             stop("nonfinite in Euler predictor")
             break
 
-        k2 = rhs_u(f_euler, u + du)
+        k2 = rhs_u(f_euler, u_new)
 
         if stop_on_nonfinite and (not torch.isfinite(k2).all()):
             stop("nonfinite in k2")
             break
 
-        f_heun = f + 0.5 * du * (k1 + k2)
+        f_heun_raw = f + 0.5 * du * (k1 + k2)
+        f_heun_after_clipping = f_heun_raw
 
         if clip_negative:
-            f_heun = torch.clamp(f_heun, min=clip_tol_t)
+            f_heun_after_clipping = torch.clamp(
+                f_heun_after_clipping,
+                min=clip_tol_t,
+            )
+
+        f_heun = f_heun_after_clipping
 
         if post_step_projector is not None:
             f_heun = post_step_projector(
                 f_old=f_old,
                 f_candidate=f_heun,
                 u_old=u_old,
-                u_new=u + du,
+                u_new=u_new,
                 du=du,
             )
             if clip_negative:
@@ -792,10 +826,30 @@ def integrate_heun_adaptive_loga_trajectory(
 
         if err <= 1.0:
             f = f_heun
-            u = u + du
+            u = u_new
             n_accept += 1
             status["last_err"] = err.detach().clone()
             status["last_du"] = du.detach().clone()
+
+            if accepted_step_diagnostics is not None:
+                if (n_accept % diagnostics_every_accepted == 0) or (u >= u_end):
+                    append_diagnostics(
+                        accepted_step_diagnostics(
+                            accept_index=n_accept,
+                            reject_count=n_reject,
+                            f_old=f_old,
+                            f_euler_raw=f_euler_raw,
+                            f_euler_after_clipping=f_euler_after_clipping,
+                            f_euler_final=f_euler,
+                            f_heun_raw=f_heun_raw,
+                            f_heun_after_clipping=f_heun_after_clipping,
+                            f_heun_final=f_heun,
+                            u_old=u_old,
+                            u_new=u,
+                            du=du,
+                            err=err,
+                        )
+                    )
 
             if (n_accept % store_every_accepted == 0) or (u >= u_end):
                 a_hist.append(torch.exp(u.detach().clone()))
@@ -856,6 +910,14 @@ def integrate_heun_adaptive_loga_trajectory(
         "status": status,
     }
 
+    if diagnostics_hist:
+        result["diagnostics"] = {
+            key: torch.stack(values, dim=0)
+            for key, values in diagnostics_hist.items()
+        }
+    else:
+        result["diagnostics"] = {}
+
     out_path_pt = _make_results_path(
         out_path_pt,
         results_dir=results_dir,
@@ -910,6 +972,7 @@ def run_hybrid_FI_then_adaptive_self(
     C_self_operator=C_self_torch_logq,
     batch_size=64,
     Ng=12,
+    enforce_self_projection=True,
 
     # Hybrid control
     n_windows=400,
@@ -929,6 +992,10 @@ def run_hybrid_FI_then_adaptive_self(
     heun_safety=0.95,
     heun_store_every_accepted=200,
     heun_print_every_accepted=50,
+    heun_project_source_moments=True,
+    heun_record_raw_diagnostics=False,
+    heun_self_diagnostics=False,
+    heun_diagnostics_every=1,
 
     # Stability
     clip_negative=True,
@@ -979,6 +1046,7 @@ def run_hybrid_FI_then_adaptive_self(
         Ng=Ng,
         batch_size=batch_size,
         return_diagnostics=False,
+        enforce_self_projection=enforce_self_projection,
     )
 
     # ------------------------------------------------------------
@@ -1022,7 +1090,16 @@ def run_hybrid_FI_then_adaptive_self(
         pref_FI=1.0,
     )
 
-    def project_full_step_to_source_moments(f_old, f_candidate, u_old, u_new, du):
+    Cself_diag = partial(
+        C_self_operator,
+        lam=lam_self,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=True,
+        enforce_self_projection=enforce_self_projection,
+    )
+
+    def source_only_step_target_moments(f_old, u_old, u_new, du):
         a_old = torch.exp(u_old)
         a_new = torch.exp(u_new)
 
@@ -1039,6 +1116,17 @@ def run_hybrid_FI_then_adaptive_self(
             m=m_chi,
         )
 
+        return target_N, target_E, f_target
+
+    def project_full_step_to_source_moments(f_old, f_candidate, u_old, u_new, du):
+        a_new = torch.exp(u_new)
+        target_N, target_E, _ = source_only_step_target_moments(
+            f_old=f_old,
+            u_old=u_old,
+            u_new=u_new,
+            du=du,
+        )
+
         return project_distribution_to_number_energy(
             f=f_candidate,
             q=q,
@@ -1047,6 +1135,157 @@ def run_hybrid_FI_then_adaptive_self(
             target_number=target_N,
             target_energy=target_E,
         )
+
+    def rel_to_target(value, target):
+        floor = torch.as_tensor(1e-300, device=device, dtype=dtype)
+        return value / torch.clamp(torch.abs(target), min=floor)
+
+    def heun_raw_step_diagnostics(
+        *,
+        accept_index,
+        reject_count,
+        f_old,
+        f_euler_raw,
+        f_euler_after_clipping,
+        f_euler_final,
+        f_heun_raw,
+        f_heun_after_clipping,
+        f_heun_final,
+        u_old,
+        u_new,
+        du,
+        err,
+    ):
+        del f_euler_final
+
+        a_old = torch.exp(u_old)
+        a_new = torch.exp(u_new)
+
+        target_N, target_E, _ = source_only_step_target_moments(
+            f_old=f_old,
+            u_old=u_old,
+            u_new=u_new,
+            du=du,
+        )
+
+        N_old, E_old, _, _, _ = distribution_number_energy_moments(
+            f_old,
+            q=q,
+            a=a_old,
+            m=m_chi,
+        )
+        N_euler_raw, E_euler_raw, _, _, _ = distribution_number_energy_moments(
+            f_euler_raw,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+        N_euler_clip, E_euler_clip, _, _, _ = distribution_number_energy_moments(
+            f_euler_after_clipping,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+        N_raw, E_raw, _, _, _ = distribution_number_energy_moments(
+            f_heun_raw,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+        N_clip, E_clip, _, _, _ = distribution_number_energy_moments(
+            f_heun_after_clipping,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+        N_final, E_final, _, _, _ = distribution_number_energy_moments(
+            f_heun_final,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+
+        neg_euler = torch.clamp(-f_euler_raw, min=0.0)
+        neg_heun = torch.clamp(-f_heun_raw, min=0.0)
+        N_neg_euler, E_neg_euler, _, _, _ = distribution_number_energy_moments(
+            neg_euler,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+        N_neg_heun, E_neg_heun, _, _, _ = distribution_number_energy_moments(
+            neg_heun,
+            q=q,
+            a=a_new,
+            m=m_chi,
+        )
+
+        diag = {
+            "accept_index": float(accept_index),
+            "reject_count": float(reject_count),
+            "a_old": a_old,
+            "a_new": a_new,
+            "du": du,
+            "err": err,
+            "N_old_at_a_old": N_old,
+            "E_old_at_a_old": E_old,
+            "N_target_source_only": target_N,
+            "E_target_source_only": target_E,
+            "N_euler_raw": N_euler_raw,
+            "E_euler_raw": E_euler_raw,
+            "N_euler_after_clipping": N_euler_clip,
+            "E_euler_after_clipping": E_euler_clip,
+            "N_heun_raw": N_raw,
+            "E_heun_raw": E_raw,
+            "N_after_clipping": N_clip,
+            "E_after_clipping": E_clip,
+            "N_after_solver_projection": N_final,
+            "E_after_solver_projection": E_final,
+            "dN_euler_before_solver_projection_rel": rel_to_target(N_euler_raw - target_N, target_N),
+            "dE_euler_before_solver_projection_rel": rel_to_target(E_euler_raw - target_E, target_E),
+            "dN_euler_from_clipping_rel": rel_to_target(N_euler_clip - N_euler_raw, target_N),
+            "dE_euler_from_clipping_rel": rel_to_target(E_euler_clip - E_euler_raw, target_E),
+            "dN_before_solver_projection_rel": rel_to_target(N_raw - target_N, target_N),
+            "dE_before_solver_projection_rel": rel_to_target(E_raw - target_E, target_E),
+            "dN_from_clipping_rel": rel_to_target(N_clip - N_raw, target_N),
+            "dE_from_clipping_rel": rel_to_target(E_clip - E_raw, target_E),
+            "dN_from_solver_projection_rel": rel_to_target(N_final - N_clip, target_N),
+            "dE_from_solver_projection_rel": rel_to_target(E_final - E_clip, target_E),
+            "dN_final_rel": rel_to_target(N_final - target_N, target_N),
+            "dE_final_rel": rel_to_target(E_final - target_E, target_E),
+            "N_negative_euler_raw": N_neg_euler,
+            "E_negative_euler_raw": E_neg_euler,
+            "N_negative_heun_raw": N_neg_heun,
+            "E_negative_heun_raw": E_neg_heun,
+            "min_f_euler_raw": torch.min(f_euler_raw),
+            "min_f_heun_raw": torch.min(f_heun_raw),
+            "n_negative_euler_raw": torch.count_nonzero(f_euler_raw < 0.0).to(dtype),
+            "n_negative_heun_raw": torch.count_nonzero(f_heun_raw < 0.0).to(dtype),
+        }
+
+        if heun_self_diagnostics:
+            _, _, _, _, cdiag = Cself_diag(
+                f=f_heun_raw,
+                a=a_new,
+                q=q,
+                m=m_chi,
+            )
+            diag.update(
+                {
+                    "self_valid_fraction_given_phys": cdiag["valid_fraction_given_phys"],
+                    "self_outside_weight_fraction": cdiag["outside_weight_fraction"],
+                    "rel_number_self_raw": cdiag["rel_number_raw"],
+                    "rel_energy_self_raw": cdiag["rel_energy_raw"],
+                    "rel_number_self_after_projection": cdiag["rel_number"],
+                    "rel_energy_self_after_projection": cdiag["rel_energy"],
+                    "I_number_self_raw": cdiag["I_number_raw"],
+                    "I_energy_self_raw": cdiag["I_energy_raw"],
+                    "I_number_self_after_projection": cdiag["I_number"],
+                    "I_energy_self_after_projection": cdiag["I_energy"],
+                }
+            )
+
+        return diag
 
     u_grid = torch.linspace(
         math.log(a0),
@@ -1192,7 +1431,17 @@ def run_hybrid_FI_then_adaptive_self(
                 clip_negative=clip_negative,
                 clip_tol=clip_tol,
                 stop_on_nonfinite=True,
-                post_step_projector=project_full_step_to_source_moments,
+                post_step_projector=(
+                    project_full_step_to_source_moments
+                    if heun_project_source_moments
+                    else None
+                ),
+                accepted_step_diagnostics=(
+                    heun_raw_step_diagnostics
+                    if heun_record_raw_diagnostics
+                    else None
+                ),
+                diagnostics_every_accepted=heun_diagnostics_every,
             )
 
             f = traj_heun["f_final"]
@@ -1245,6 +1494,11 @@ def run_hybrid_FI_then_adaptive_self(
         else torch.as_tensor(a_switch, device=device, dtype=dtype),
 
         "heun_status": heun_status,
+        "heun_diagnostics": (
+            None
+            if heun_status is None
+            else traj_heun.get("diagnostics", {})
+        ) if switched else None,
         "rk4_status_hist": rk4_status_hist,
 
         "settings": {
@@ -1259,6 +1513,7 @@ def run_hybrid_FI_then_adaptive_self(
             "C_self_operator": C_self_operator.__name__,
             "Ng": Ng,
             "batch_size": batch_size,
+            "enforce_self_projection": enforce_self_projection,
             "heun_du_init": heun_du_init,
             "heun_du_min": heun_du_min,
             "heun_du_max": heun_du_max,
@@ -1266,7 +1521,12 @@ def run_hybrid_FI_then_adaptive_self(
             "heun_atol": heun_atol,
             "heun_safety": heun_safety,
             "heun_store_every_accepted": heun_store_every_accepted,
-            "heun_project_source_moments": True,
+            "heun_project_source_moments": heun_project_source_moments,
+            "heun_record_raw_diagnostics": heun_record_raw_diagnostics,
+            "heun_self_diagnostics": heun_self_diagnostics,
+            "heun_diagnostics_every": heun_diagnostics_every,
+            "clip_negative": clip_negative,
+            "clip_tol": clip_tol,
         },
     }
 

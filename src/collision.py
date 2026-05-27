@@ -357,8 +357,9 @@ def enforce_self_zero_moments_weighted(
 
     det = A00 * A11 - A01 * A01
     tiny = 100.0 * torch.finfo(C.dtype).eps
+    scale = torch.abs(A00 * A11)
 
-    if torch.abs(det) <= tiny * (torch.abs(A00 * A11) + 1.0):
+    if (not torch.isfinite(det)) or scale <= 0.0 or torch.abs(det) <= tiny * scale:
         return C
 
     alpha = (R_N * A11 - R_rho * A01) / det
@@ -573,6 +574,7 @@ def _C_self_torch_logq_impl(
     m, lam,
     Ng=16, batch_size=16,
     return_diagnostics=False,
+    enforce_self_projection=True,
 ):
     f = torch.as_tensor(f)
     device, dtype = f.device, f.dtype
@@ -726,12 +728,14 @@ def _C_self_torch_logq_impl(
             C, p, E, dp_vec
         )
     
-    C = enforce_self_zero_moments_weighted(
-        C_self_raw=C,
-        f=f,
-        p=p,
-        E=E,
-        dp=dp_vec,) 
+    if enforce_self_projection:
+        C = enforce_self_zero_moments_weighted(
+            C_self_raw=C,
+            f=f,
+            p=p,
+            E=E,
+            dp=dp_vec,
+        )
 
     if return_diagnostics:
         I_energy, I_number, rE, rN = check_conservation_nonuniform(
@@ -776,6 +780,7 @@ def C_self_torch_logq_conservative_impl(
     m, lam,
     Ng=16, batch_size=16,
     return_diagnostics=False,
+    enforce_self_projection=True,
     f_floor_rel=1e-300,
 ):
     """
@@ -1031,13 +1036,14 @@ def C_self_torch_logq_conservative_impl(
 
     # Numerical fallback for any residual from boundary truncation,
     # float32 summation, or invalid channels.
-    C = enforce_self_zero_moments_weighted(
-        C_self_raw=C,
-        f=f,
-        p=p,
-        E=E,
-        dp=dp_vec,
-    )
+    if enforce_self_projection:
+        C = enforce_self_zero_moments_weighted(
+            C_self_raw=C,
+            f=f,
+            p=p,
+            E=E,
+            dp=dp_vec,
+        )
 
     if return_diagnostics:
         I_energy, I_number, rE, rN = check_conservation_nonuniform(

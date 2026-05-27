@@ -32,9 +32,10 @@
   "collision": {
     "_comment": "below can be dense or conservative",
     "operator": "dense",
-    "lambda_self_values": [1.0e-5,5.0e-5,1.0e-4,2.0e-4,3.0e-4,5.0e-4, 7.0e-4],
+    "lambda_self_values": [6.0e-5],
     "Ng": 14,
-    "batch_size": 16
+    "batch_size": 16,
+    "enforce_self_projection": true
   },
 
   "hybrid": {
@@ -55,11 +56,15 @@
     "atol": 1.0e-10,
     "safety": 0.9,
     "store_every_accepted": 2,
-    "print_every_accepted": 20
+    "print_every_accepted": 20,
+    "project_source_moments": false,
+    "record_raw_diagnostics": true,
+    "self_diagnostics": true,
+    "diagnostics_every": 1
   },
 
   "stability": {
-    "clip_negative": true,
+    "clip_negative": false,
     "clip_tol": 0.0
   },
 
