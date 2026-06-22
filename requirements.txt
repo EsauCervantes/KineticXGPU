@@ -1,3 +1,4 @@
+# Core Python dependencies
 numpy
 scipy
 torch
