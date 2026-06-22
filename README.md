@@ -3,9 +3,9 @@
 GPU-accelerated Boltzmann solvers for isotropic dark-sector phase-space
 distributions with elastic 2 -> 2 self-collisions.
 
-The core implementation is written in PyTorch. It evaluates the dense
-self-collision operator on either CPU or CUDA devices and includes a hybrid
-freeze-in/self-scattering solver used for the paper benchmark.
+The core implementation is written in PyTorch. It evaluates the self-collision
+operator on CPU or CUDA devices and includes the hybrid freeze-in/self-scattering
+solver used for the benchmark runs in the paper.
 
 ## Repository Layout
 
@@ -19,8 +19,8 @@ src/
   thermodynamics.py   equilibrium and source-rate helpers
 
 scripts/
-  run_solver.py                 main cBE/fBE entry point
-  plot_figures.py               generate the fBE/cBE figure set from saved runs
+  run_solver.py                 run the cBE and fBE solvers
+  plot_figures.py               plot saved fBE/cBE runs
   benchmark.py                  isolated operator CPU/GPU benchmarks
   benchmark_best_comparison.py  optional comparison against a local BEST checkout
 
@@ -29,9 +29,9 @@ configs/
   paper_benchmark.json  heavier settings used for the paper scan
 ```
 
-Generated runs and plots are written under `results/` and are intentionally
-ignored by Git. The only retained result file is the BEST-comparison CSV used
-for the paper benchmark.
+Generated runs and plots are written under `results/` and ignored by Git. The
+only result file kept in the repository is the BEST-comparison CSV used in the
+paper.
 
 ## Installation
 
@@ -90,13 +90,13 @@ Run the cBE reference solution with:
 python3 scripts/run_solver.py cbe --config configs/paper_benchmark.json
 ```
 
-The paper benchmark defaults to CUDA and float64. Adjust `device`, `dtype`,
+The paper benchmark uses CUDA and float64 by default. Adjust `device`, `dtype`,
 `grid.N`, `collision.Ng`, and `collision.batch_size` in the JSON file for your
 hardware.
 
 ## Plotting
 
-Generate the figure set from saved quickstart runs:
+Plot saved quickstart runs:
 
 ```bash
 python3 scripts/plot_figures.py \
@@ -116,7 +116,7 @@ python3 scripts/plot_figures.py \
   --run-prefix paper
 ```
 
-By default the script writes PDF files named `evolution_lambda_<value>`,
+By default, the script writes PDF files named `evolution_lambda_<value>`,
 `final_distributions`, `velocity_moments`, `temperature_moment`, `rates`, and
 `abundance_Y_comparison`.
 
@@ -138,8 +138,8 @@ CSV outputs are written to `results/CPU-GPU_benchmarks/`.
 
 ## BEST Comparison
 
-BEST is not vendored in this repository. To reproduce the independent
-implementation comparison, clone BEST separately and pass its path:
+BEST is not included in this repository. To reproduce the independent
+implementation comparison, clone BEST separately and pass its local path:
 
 ```bash
 python3 scripts/benchmark_best_comparison.py \
