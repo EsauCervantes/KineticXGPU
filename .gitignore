@@ -15,7 +15,7 @@ __pycache__/
 .venv/
 venv/
 
-# Generated outputs
+# Solver outputs and generated figures
 results/
 !results/
 !results/CPU-GPU_benchmarks/
