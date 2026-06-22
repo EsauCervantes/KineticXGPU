@@ -1,0 +1,84 @@
+{
+  "device": "auto",
+  "dtype": "float64",
+  "save": true,
+  "save_dat": false,
+  "results_dir": "results/runs",
+  "fbe_run_group": "fBE",
+  "cbe_run_group": "cBE",
+  "run_name_prefix": "quickstart",
+
+  
+  "cosmology": {
+    "use_torch_tables": true
+  },
+
+  "physics": {
+    "_endpoint_comment": "T_initial is in GeV and defaults naturally to the reheating temperature. Lower T_initial increases x_initial=m_chi/T_initial.",
+    "T_initial": 150.0,
+    "x_final": 1e4,
+    "m_chi": 0.5,
+    "m_h": 125.0,
+    "v_h": 246.0,
+    "lambda_portal": 1.08e-11,
+    "m_condensate": 1.8,
+    "gamma_condensate": 1.0e-21,
+    "n_condensate_initial": 0.02,
+    "multiplicity_condensate": 2.0,
+    "xi_inf": 1.0e-4
+  },
+
+  "grid": {
+    "q_min": 0.5,
+    "q_max": 500000.0,
+    "N": 128
+  },
+
+  "collision": {
+    "_comment": "Self-collision statistics: classical, boson, or fermion.",
+    "statistics": "classical",
+    "lambda_self_values": [5e-5, 1e-4,3e-4, 8e-4],
+    "Ng": 14,
+    "batch_size": 64,
+    "enforce_self_projection": true
+  },
+
+  "hybrid": {
+    "n_windows": 180,
+    "gamma_over_H_on": 0.05,
+    "gamma_check_every_far": 20,
+    "gamma_check_every_mid": 10,
+    "gamma_check_every_near": 5,
+    "rk4_steps_per_window": 1,
+    "rk4_store_every_steps": 10
+  },
+
+  "heun": {
+    "du_init": 1e-4,
+    "du_min": 1.0e-7,
+    "du_max": 0.05,
+    "rtol": 1.0e-2,
+    "atol": 1.0e-10,
+    "safety": 0.9,
+    "store_every_accepted": 10,
+    "print_every_accepted": 20,
+    "project_source_moments": false,
+    "record_raw_diagnostics": false,
+    "self_diagnostics": false,
+    "diagnostics_every": 1
+  },
+
+  "stability": {
+    "clip_negative": false,
+    "clip_tol": 0.0
+  },
+
+  "cbe": {
+    "method": "Radau",
+    "rtol": 1.0e-6,
+    "atol": 1.0e-9,
+    "max_step_u": 0.001,
+    "condensate_n_eval": 1000,
+    "condensate_zero_rel": 1.0e-14
+  }
+}
