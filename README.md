@@ -1,80 +1,165 @@
 # KineticXGPU
-### GPU-Accelerated Boltzmann Collision Operator for Cosmological Kinetic Theory
 
-**KineticXGPU achieves up to 9.5× GPU speedup** over CPU for evaluating discretized Boltzmann collision operators, enabling faster iterative studies of thermalization and non-equilibrium dynamics in the early universe.
+GPU-accelerated Boltzmann solvers for isotropic dark-sector phase-space
+distributions with elastic 2 -> 2 self-collisions.
 
-Built with PyTorch. Designed for researchers working on dark matter at the phase-space level, or any problem where the collision term is the computational bottleneck.
+The core implementation is written in PyTorch. It evaluates the dense
+self-collision operator on either CPU or CUDA devices and includes a hybrid
+freeze-in/self-scattering solver used for the paper benchmark.
 
----
-
-## Benchmark Results
-
-| Grid size \(N\) | CPU runtime [ms] | GPU runtime [ms] | GPU speedup |
-|----------------:|-----------------:|-----------------:|------------:|
-| 32              | 13.6             | 6.5              | 2.10×       |
-| 48              | 44.5             | 10.2             | 4.36×       |
-| 64              | 112.5            | 15.5             | 7.24×       |
-| 80              | 190.7            | 27.8             | 6.86×       |
-| 96              | 346.8            | 41.9             | 8.28×       |
-| 112             | 565.1            | 66.5             | 8.50×       |
-| 128             | 862.0            | 94.7             | 9.10×       |
-| 160             | 1709.7           | 180.9            | 9.45×       |
-| 192             | 3016.9           | 322.2            | 9.36×       |
-| 224             | 4716.6           | 505.8            | 9.33×       |
-| 256             | 7036.9           | 739.3            | 9.52×       |
-
-Runtimes are wall-clock medians over multiple runs (float32, Ng=12 angular quadrature, batch size 16). Speedup grows with grid size, reaching ~9.5× at N=256.
-
-**Hardware:**
-| Component | Specification |
-|:--|:--|
-| CPU | Intel® Core™ i7-10750H @ 2.60GHz, 6 cores / 12 threads |
-| GPU | NVIDIA Quadro T2000 Mobile / Max-Q |
-| CUDA version | 12.2 |
-
----
-
-## What This Solves
-
-The collision term C[f] in df/dt = C[f] is typically the computational bottleneck in Boltzmann solvers. For 2→2 self-scattering, the discretized operator takes a bilinear form over momentum grids — a structure naturally suited to GPU tensor operations. KineticXGPU exploits this with PyTorch, making grid refinement studies that were previously slow practical to run iteratively.
-
----
-
-## Features
-
-- PyTorch implementation of a discretized collision operator C[f] for self-scattering (`collision.py`)
-- CPU and GPU execution modes
-- Timing benchmarks and speedup measurements
-- Diagnostics for thermalization toward Maxwell–Boltzmann distributions
-- Conservative deposition variant for exact discrete number and energy conservation
-- Adaptive solver (`solver.py`). Different strategies are being explored right now to prevent the constant CPU-GPU overhead from time-step integration. 
-
----
-
-## Notebooks
-
-Explore results and diagnostics:
+## Repository Layout
 
 ```text
-notebooks/plots.ipynb
+src/
+  collision.py        self-collision operators, source terms, diagnostics
+  solver.py           RK4, adaptive Heun, and hybrid fBE solver
+  cBE_solver.py       coupled Boltzmann-equation comparison solver
+  cosmology.py        cosmological background functions
+  grid_log.py         logarithmic momentum-grid utilities
+  thermodynamics.py   equilibrium and source-rate helpers
+
+scripts/
+  run_solver.py                 main cBE/fBE entry point
+  plot_figures.py               generate the fBE/cBE figure set from saved runs
+  benchmark.py                  isolated operator CPU/GPU benchmarks
+  benchmark_best_comparison.py  optional comparison against a local BEST checkout
+
+configs/
+  quickstart.json       small CPU/GPU-auto run for testing the installation
+  paper_benchmark.json  heavier settings used for the paper scan
 ```
 
----
+Generated runs and plots are written under `results/` and are intentionally
+ignored by Git. The only retained result file is the BEST-comparison CSV used
+for the paper benchmark.
 
-## Benchmarking Methodology
+## Installation
 
-Performance is measured as:
-- Wall-clock time per collision-operator evaluation
-- Median over multiple runs
-- Explicit CUDA synchronization when benchmarking GPU
-- Fixed angular quadrature and batch size
+Create an environment with Python 3.10 or newer, then install the Python
+dependencies:
 
-Benchmark settings:
-| Setting | Value |
-|:--|:--|
-| Precision | `float32` |
-| Angular quadrature | Ng = 12 |
-| Batch size | 16 |
-| Momentum range | qmin=1e-3, qmax=1e2 |
-| Self-coupling | lambda = 1 |
-| Conservation projection | Enabled |
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+For CUDA runs, install a PyTorch build compatible with your CUDA driver. See the
+official PyTorch installation selector if the default `pip install torch` does
+not provide CUDA support on your system.
+
+## Quickstart
+
+Run a small fBE example:
+
+```bash
+python3 scripts/run_solver.py fbe --config configs/quickstart.json
+```
+
+Run the corresponding cBE comparison:
+
+```bash
+python3 scripts/run_solver.py cbe --config configs/quickstart.json
+```
+
+The default config uses `"device": "auto"`, so CUDA is used when available and
+CPU otherwise. fBE outputs are written under `results/runs/fBE/`, and the cBE
+reference is written under `results/runs/cBE/`.
+
+The evolution endpoints are set in the JSON through `physics.T_initial` in GeV
+and `physics.x_final`, where `x=m_chi/T`. The default `T_initial` is 150 GeV;
+lower it if you want to start later, i.e. at a larger `x_initial`.
+
+## Paper Benchmark
+
+The heavier paper settings are in:
+
+```text
+configs/paper_benchmark.json
+```
+
+Run the fBE scan with:
+
+```bash
+python3 scripts/run_solver.py fbe --config configs/paper_benchmark.json
+```
+
+Run the cBE reference solution with:
+
+```bash
+python3 scripts/run_solver.py cbe --config configs/paper_benchmark.json
+```
+
+The paper benchmark defaults to CUDA and float64. Adjust `device`, `dtype`,
+`grid.N`, `collision.Ng`, and `collision.batch_size` in the JSON file for your
+hardware.
+
+## Plotting
+
+Generate the figure set from saved quickstart runs:
+
+```bash
+python3 scripts/plot_figures.py \
+  --runs-dir results/runs/fBE \
+  --cbe-dir results/runs/cBE \
+  --out-dir results/plots \
+  --run-prefix quickstart
+```
+
+Use `--run-prefix paper` after running the paper benchmark:
+
+```bash
+python3 scripts/plot_figures.py \
+  --runs-dir results/runs/fBE \
+  --cbe-dir results/runs/cBE \
+  --out-dir results/plots \
+  --run-prefix paper
+```
+
+By default the script writes PDF files named `evolution_lambda_<value>`,
+`final_distributions`, `velocity_moments`, `temperature_moment`, `rates`, and
+`abundance_Y_comparison`.
+
+## Collision Operator Benchmark
+
+Benchmark isolated self-collision calls:
+
+```bash
+python3 scripts/benchmark.py --device cpu --dtype float64 --N-list 32 48 64
+```
+
+For CUDA:
+
+```bash
+python3 scripts/benchmark.py --device cuda --dtype float32 --memory-aware-batch-size
+```
+
+CSV outputs are written to `results/CPU-GPU_benchmarks/`.
+
+## BEST Comparison
+
+BEST is not vendored in this repository. To reproduce the independent
+implementation comparison, clone BEST separately and pass its path:
+
+```bash
+python3 scripts/benchmark_best_comparison.py \
+  --best-dir /path/to/BEST \
+  --device cuda \
+  --dtype float64 \
+  --N-list 32 48 64 96
+```
+
+Use `--skip-best` to benchmark only the KineticXGPU operator.
+
+The retained CSV
+`results/CPU-GPU_benchmarks/best_comparison_boson_raw_N32_48_64_96_Nmu18_warm20_rep20_with_fp32gpu.csv`
+contains the BEST-comparison data used for the paper.
+
+## Notes
+
+- `results/` contains generated data and plots and is ignored by Git, except
+  for the retained BEST-comparison CSV.
+- The small `quickstart` config is intended as a smoke test, not as the final
+  physics scan.
+- The current fBE solver path uses `C_MB` by default. Set
+  `collision.statistics` to `boson` or `fermion` to use `C_quantum`.
