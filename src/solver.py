@@ -1,3 +1,5 @@
+"""Time integrators and hybrid fBE solver for KineticXGPU."""
+
 import torch
 import math
 import os
