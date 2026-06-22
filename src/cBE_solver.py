@@ -25,12 +25,6 @@ def Y_solver_from_Ns(cosmo, Ns, afinal):
     return N_final / (afinal**3 * s_final)
 
 
-def abundance_ratio(cosmo, Ns, afinal, ms):
-    Y_sol = Y_solver_from_Ns(cosmo, Ns, afinal)
-    Y_obs = Y_obs_DM(ms)
-    return Y_sol / Y_obs
-
-
 def solve_condensate_N_loga_quad(H_of_a, N_init, ai, af, n_eval=4000, zero_rel=1e-14):
     u_grid = np.linspace(np.log(ai), np.log(af), n_eval)
     a_grid = np.exp(u_grid)
@@ -135,7 +129,7 @@ def solve_free_in_loga(
     atol=1e-9,
     method="BDF",
     max_step_u=0.01,
-    a_match=None,   # NEW: hand-chosen matching scale for NR tail
+    a_match=None,
 ):
     """
     Solve the cBE in u = log(a), optionally only up to a_match and then use
@@ -343,13 +337,3 @@ def solve_free_in_loga_with_abundance(
     ratio = Y_sol / Y_obs
 
     return sol, Ns, Ts, Y_sol, Y_obs, ratio
-
-
-def rho_X_of_a(a, mX, nX_of_a):
-    return mX * float(nX_of_a(a))
-
-
-def radiation_dominance_ratio(a, cosmo, mX, nX_of_a):
-    rhoX = rho_X_of_a(a, mX, nX_of_a)
-    rhor = float(cosmo.rho_rad(float(cosmo.T_of_a(a))))
-    return rhoX / rhor

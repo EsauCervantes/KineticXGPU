@@ -26,8 +26,7 @@ if str(SRC_DIR) not in sys.path:
 
 from grid_log import make_log_q_grid
 from collision import (
-    C_self_torch_logq,
-    C_self_torch_logq_conservative_scatter,
+    C_MB,
 )
 
 
@@ -153,14 +152,10 @@ def estimate_bytes_per_batch(
     bytes_per_float = torch.tensor([], dtype=dtype).element_size()
 
     # Approximate number of B x N x N tensors alive at peak.
-    # Conservative operator has extra scatter/indexing intermediates.
     if safety_tensor_count is not None:
         n_tensors = safety_tensor_count
     else:
-        if operator_name == "conservative_scatter":
-            n_tensors = 24
-        else:
-            n_tensors = 18
+        n_tensors = 18
 
     # Angular part can temporarily be heavier. Add an Ng-dependent allowance.
     # This is deliberately cautious.
@@ -504,8 +499,7 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     operators = {
-        "semi_linearized": C_self_torch_logq,
-        "conservative_scatter": C_self_torch_logq_conservative_scatter,
+        "C_MB": C_MB,
     }
 
     rows = []
@@ -568,8 +562,7 @@ def main():
         }
 
         for shape_name, f in shapes.items():
-            # Avoid exact zeros, especially because the conservative operator
-            # may use interpolation involving f_tilde.
+            # Avoid exact zeros in diagnostic ratio columns.
             f = torch.clamp(f, min=torch.finfo(dtype).tiny)
 
             for op_name, op in operators.items():

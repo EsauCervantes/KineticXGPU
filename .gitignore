@@ -3,6 +3,31 @@
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
+
+# Local environments
+.env
+.venv/
+venv/
+
+# Generated outputs
+results/
+!results/
+!results/CPU-GPU_benchmarks/
+!results/CPU-GPU_benchmarks/best_comparison_boson_raw_N32_48_64_96_Nmu18_warm20_rep20_with_fp32gpu.csv
+*.pdf
+*.png
+*.pt
+*.npz
+
+# Local external checkouts
+best-main/
+external/
+
+# Editor metadata
+.vscode/

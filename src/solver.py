@@ -8,13 +8,21 @@ from pathlib import Path
 
 from functools import partial
 from collision import (
-    rhs_df_da_torch_logq_FI,
-    rhs_df_da_torch_logq_generic,
-    C_self_torch_logq,
-    C_self_torch_logq_conservative_scatter,
+    rhs_df_da_FI,
+    rhs_df_da_generic,
+    C_MB,
     estimate_gamma_eff_from_current_f,
 )
 from grid_log import grid_edges_from_centers_log
+
+
+def _callable_name(func):
+    if hasattr(func, "__name__"):
+        return func.__name__
+    wrapped = getattr(func, "func", None)
+    if wrapped is not None and hasattr(wrapped, "__name__"):
+        return wrapped.__name__
+    return type(func).__name__
 
 
 @torch.no_grad()
@@ -437,7 +445,7 @@ def integrate_rk4_loga_trajectory(
 
     Example
     -------
-    integrate_rk4_a_trajectory(
+    integrate_rk4_loga_trajectory(
         ...,
         out_path_pt="trajectory.pt",
         out_path_dat="trajectory.dat",
@@ -615,30 +623,6 @@ def integrate_rk4_loga_trajectory(
     )
 
     return result
-
-
-# ============================================================
-# Backward-compatible wrappers
-# ============================================================
-
-@torch.no_grad()
-def integrate_rk4_a(*args, **kwargs):
-    """
-    Backward-compatible wrapper.
-
-    This now integrates uniformly in log(a), not linearly in a.
-    """
-    return integrate_rk4_loga(*args, **kwargs)
-
-
-@torch.no_grad()
-def integrate_rk4_a_trajectory(*args, **kwargs):
-    """
-    Backward-compatible wrapper.
-
-    This now integrates uniformly in log(a), not linearly in a.
-    """
-    return integrate_rk4_loga_trajectory(*args, **kwargs)
 
 
 @torch.no_grad()
@@ -943,11 +927,6 @@ def integrate_heun_adaptive_loga_trajectory(
 
     return result
 
-@torch.no_grad()
-def integrate_heun_adaptive_a_trajectory(*args, **kwargs):
-    return integrate_heun_adaptive_loga_trajectory(*args, **kwargs)
-
-
 # ============================================================
 # Hybrid driver: FI-only chunks until self-scattering matters,
 # then one global adaptive Heun solve from a_switch to af
@@ -969,7 +948,8 @@ def run_hybrid_FI_then_adaptive_self(
     Gamma_X,
     mX,
     lam_self,
-    C_self_operator=C_self_torch_logq,
+    multiplicity_X=2.0,
+    C_self_operator=C_MB,
     batch_size=64,
     Ng=12,
     enforce_self_projection=True,
@@ -1036,9 +1016,8 @@ def run_hybrid_FI_then_adaptive_self(
     # ------------------------------------------------------------
     # Self-scattering collision operator
     #
-    # Built-in choices C_self_torch_logq and
-    # C_self_torch_logq_conservative_scatter share this interface, so
-    # either can be passed as C_self_operator for comparison runs.
+    # Built-in self-collision operators use this interface, so external
+    # operators should follow it too.
     # ------------------------------------------------------------
     Cself_full = partial(
         C_self_operator,
@@ -1053,7 +1032,7 @@ def run_hybrid_FI_then_adaptive_self(
     # FI-only RHS
     # ------------------------------------------------------------
     rhs_FI = partial(
-        rhs_df_da_torch_logq_FI,
+        rhs_df_da_FI,
         q=q,
         m_chi=m_chi,
         H_of_a=H_of_a,
@@ -1064,7 +1043,7 @@ def run_hybrid_FI_then_adaptive_self(
         Gamma_parent2=Gamma_X,
         m_h2=mX,
         m_other2=m_chi,
-        multiplicity2=2.0,
+        multiplicity2=multiplicity_X,
         gchi=1.0,
         pref_FI=1.0,
     )
@@ -1073,7 +1052,7 @@ def run_hybrid_FI_then_adaptive_self(
     # Full RHS = FI + self-scattering
     # ------------------------------------------------------------
     rhs_full = partial(
-        rhs_df_da_torch_logq_generic,
+        rhs_df_da_generic,
         q=q,
         m_chi=m_chi,
         H_of_a=H_of_a,
@@ -1085,7 +1064,7 @@ def run_hybrid_FI_then_adaptive_self(
         Gamma_parent2=Gamma_X,
         m_h2=mX,
         m_other2=m_chi,
-        multiplicity2=2.0,
+        multiplicity2=multiplicity_X,
         gchi=1.0,
         pref_FI=1.0,
     )
@@ -1347,7 +1326,7 @@ def run_hybrid_FI_then_adaptive_self(
         gamma_over_H = last_gamma_over_H
 
         if gamma_over_H < gamma_over_H_on:
-            traj_rk4 = integrate_rk4_a_trajectory(
+            traj_rk4 = integrate_rk4_loga_trajectory(
                 f0=f,
                 a0=a_left,
                 a1=a_right,
@@ -1407,10 +1386,10 @@ def run_hybrid_FI_then_adaptive_self(
                 f"[hybrid] switching to global adaptive Heun at "
                 f"window {iw + 1}/{n_windows}, "
                 f"a_switch={a_switch:.6e}, Gamma/H={gamma_over_H:.3e}, "
-                f"C_self_operator={C_self_operator.__name__}"
+                f"C_self_operator={_callable_name(C_self_operator)}"
             )
 
-            traj_heun = integrate_heun_adaptive_a_trajectory(
+            traj_heun = integrate_heun_adaptive_loga_trajectory(
                 f0=f,
                 a0=a_left,
                 a1=af,
@@ -1510,7 +1489,8 @@ def run_hybrid_FI_then_adaptive_self(
             "rk4_steps_per_window": rk4_steps_per_window,
             "rk4_store_every_steps": rk4_store_every_steps,
             "lam_self": float(lam_self),
-            "C_self_operator": C_self_operator.__name__,
+            "multiplicity_X": float(multiplicity_X),
+            "C_self_operator": _callable_name(C_self_operator),
             "Ng": Ng,
             "batch_size": batch_size,
             "enforce_self_projection": enforce_self_projection,
