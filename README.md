@@ -155,6 +155,14 @@ The retained CSV
 `results/CPU-GPU_benchmarks/best_comparison_boson_raw_N32_48_64_96_Nmu18_warm20_rep20_with_fp32gpu.csv`
 contains the BEST-comparison data used for the paper.
 
+The retained comparison was produced on:
+
+| Component | Specification |
+|:--|:--|
+| CPU | Intel Core i7-10750H @ 2.60 GHz, 6 cores / 12 threads |
+| GPU | NVIDIA Quadro T2000 Mobile / Max-Q, 4 GB memory |
+| CUDA version | 12.2 |
+
 ## Notes
 
 - `results/` contains generated data and plots and is ignored by Git, except
