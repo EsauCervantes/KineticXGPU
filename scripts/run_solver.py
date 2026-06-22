@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -19,21 +20,44 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from cBE_solver import solve_condensate_N_loga_quad, solve_free_in_loga_with_abundance
-from collision import C_self_torch_logq, C_self_torch_logq_conservative_scatter
+from collision import C_MB, C_quantum
 from cosmology import VariableGCosmology
 from grid_log import make_log_q_grid
 from solver import run_hybrid_FI_then_adaptive_self
 
 
-SELF_OPERATORS = {
-    "dense": C_self_torch_logq,
-    "conservative": C_self_torch_logq_conservative_scatter,
+SELF_STATISTICS = {
+    "classical": "classical",
+    "mb": "classical",
+    "maxwell_boltzmann": "classical",
+    "maxwell-boltzmann": "classical",
+    "boson": "boson",
+    "bose": "boson",
+    "be": "boson",
+    "bose_einstein": "boson",
+    "bose-einstein": "boson",
+    "fermion": "fermion",
+    "fermi": "fermion",
+    "fd": "fermion",
+    "fermi_dirac": "fermion",
+    "fermi-dirac": "fermion",
 }
 
 
 def load_config(path):
     with Path(path).open("r") as f:
         return json.load(f)
+
+
+def resolve_project_path(path):
+    path = Path(path)
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
+
+
+def run_group_dir(config, key, default):
+    return resolve_project_path(config.get("results_dir", "results/runs")) / config.get(key, default)
 
 
 def as_torch_dtype(name):
@@ -58,6 +82,22 @@ def config_get(config, section, key, default=None):
     return config.get(section, {}).get(key, default)
 
 
+def select_self_collision_operator(collision_config):
+    statistics_key = str(collision_config.get("statistics", "classical")).strip().lower()
+    statistics_key = statistics_key.replace(" ", "_")
+    if statistics_key not in SELF_STATISTICS:
+        raise ValueError(
+            "Unknown collision.statistics="
+            f"{collision_config.get('statistics')!r}. Use classical, boson, or fermion."
+        )
+
+    statistics = SELF_STATISTICS[statistics_key]
+    if statistics == "classical":
+        return statistics, C_MB
+
+    return statistics, partial(C_quantum, statistics=statistics)
+
+
 def make_cosmology(config, device=None, dtype=None):
     cosmo = VariableGCosmology()
 
@@ -71,7 +111,8 @@ def make_condensate(config, cosmo, af):
     physics = config["physics"]
     cbe = config.get("cbe", {})
 
-    a0 = float(physics["a0"])
+    endpoints = resolve_endpoints(config, cosmo)
+    a0 = endpoints["a0"]
     n_init = float(physics["n_condensate_initial"])
     N_init = a0**3 * n_init
 
@@ -89,7 +130,54 @@ def make_condensate(config, cosmo, af):
     return N_of_a, n_of_a
 
 
-def make_run_name(prefix, q, lam_self, Ng, batch_size, n_windows, rk4_steps_per_window, af):
+def resolve_endpoints(config, cosmo, *, af_override=None):
+    physics = config["physics"]
+    m_chi = float(physics["m_chi"])
+
+    if "T_initial" in physics:
+        T_initial = float(physics["T_initial"])
+        a0 = float(cosmo.a_of_T(T_initial))
+    elif "a0" in physics:
+        a0 = float(physics["a0"])
+        T_initial = float(cosmo.T_of_a(a0))
+    else:
+        T_initial = float(getattr(cosmo, "Trh", 150.0))
+        a0 = float(cosmo.a_of_T(T_initial))
+
+    if af_override is not None:
+        af = float(af_override)
+        T_final = float(cosmo.T_of_a(af))
+        x_final = m_chi / T_final
+    elif "x_final" in physics:
+        x_final = float(physics["x_final"])
+        af = float(cosmo.a_of_x(x_final, m_chi))
+        T_final = m_chi / x_final
+    elif "af" in physics:
+        af = float(physics["af"])
+        T_final = float(cosmo.T_of_a(af))
+        x_final = m_chi / T_final
+    else:
+        raise ValueError("Set physics.x_final or physics.af.")
+
+    x_initial = m_chi / T_initial
+
+    if af <= a0:
+        raise ValueError(
+            "Final endpoint must be after the initial endpoint: "
+            f"a0={a0:.6e}, af={af:.6e}."
+        )
+
+    return {
+        "a0": a0,
+        "af": af,
+        "T_initial": T_initial,
+        "T_final": T_final,
+        "x_initial": x_initial,
+        "x_final": x_final,
+    }
+
+
+def make_run_name(prefix, q, lam_self, Ng, batch_size, n_windows, rk4_steps_per_window, x_final):
     return (
         f"{prefix}_"
         f"N{q.numel()}_"
@@ -98,21 +186,47 @@ def make_run_name(prefix, q, lam_self, Ng, batch_size, n_windows, rk4_steps_per_
         f"batch{batch_size}_"
         f"nw{n_windows}_"
         f"rk4spw{rk4_steps_per_window}_"
-        f"af{af:.1e}"
+        f"xf{x_final:.1e}"
     )
 
 
-def make_common_metadata(config, q, lam_self=None, run_name=None):
+def resolve_run_name(config, lam_self, lam_values, q, Ng, batch_size, n_windows, rk4_steps_per_window, x_final):
+    run_name = config.get("run_name")
+    if run_name is None:
+        return make_run_name(
+            prefix=config.get("run_name_prefix", "hybrid_saved"),
+            q=q,
+            lam_self=lam_self,
+            Ng=Ng,
+            batch_size=batch_size,
+            n_windows=n_windows,
+            rk4_steps_per_window=rk4_steps_per_window,
+            x_final=x_final,
+        )
+
+    if len(lam_values) > 1:
+        return f"{run_name}_lamself{lam_self:.1e}"
+
+    return run_name
+
+
+def make_common_metadata(config, q, endpoints, lam_self=None, run_name=None):
     physics = config["physics"]
     collision = config.get("collision", {})
     hybrid = config.get("hybrid", {})
     heun = config.get("heun", {})
+    results_dir = run_group_dir(config, "fbe_run_group", "fBE")
 
     metadata = {
         "run_name": run_name,
         "created_at": datetime.now().isoformat(timespec="seconds"),
-        "a0": float(physics["a0"]),
-        "af": float(physics["af"]),
+        "results_dir": str(results_dir),
+        "a0": float(endpoints["a0"]),
+        "af": float(endpoints["af"]),
+        "T_initial": float(endpoints["T_initial"]),
+        "T_final": float(endpoints["T_final"]),
+        "x_initial": float(endpoints["x_initial"]),
+        "x_final": float(endpoints["x_final"]),
         "N_grid": int(q.numel()),
         "qmin": float(q[0].detach().cpu()),
         "qmax": float(q[-1].detach().cpu()),
@@ -125,7 +239,7 @@ def make_common_metadata(config, q, lam_self=None, run_name=None):
         "v_h": float(physics["v_h"]),
         "g_trilinear": float(physics["lambda_portal"]) * float(physics["v_h"]),
         "multiplicity_condensate": float(physics.get("multiplicity_condensate", 2.0)),
-        "self_operator": collision.get("operator", "dense"),
+        "self_statistics": collision.get("statistics", "classical"),
         "Ng": int(collision.get("Ng", 12)),
         "batch_size": int(collision.get("batch_size", 16)),
         "enforce_self_projection": bool(collision.get("enforce_self_projection", True)),
@@ -158,12 +272,16 @@ def run_fbe(config, save_override=None):
     hybrid = config.get("hybrid", {})
     heun = config.get("heun", {})
     stability = config.get("stability", {})
+    results_dir = run_group_dir(config, "fbe_run_group", "fBE")
+    save_dat = bool(config.get("save_dat", False))
+    multiplicity_X = float(physics.get("multiplicity_condensate", 2.0))
 
     cosmo = make_cosmology(config, device=device, dtype=dtype)
     H_of_a = cosmo.H_of_a_torch if config_get(config, "cosmology", "use_torch_tables", False) else cosmo.H_of_a
     T_of_a = cosmo.T_of_a_torch if config_get(config, "cosmology", "use_torch_tables", False) else cosmo.T_of_a
+    endpoints = resolve_endpoints(config, cosmo)
 
-    _, nX_of_a = make_condensate(config, cosmo, af=float(physics["af"]))
+    _, nX_of_a = make_condensate(config, cosmo, af=endpoints["af"])
 
     q, _, _, _ = make_log_q_grid(
         float(grid["q_min"]),
@@ -174,11 +292,7 @@ def run_fbe(config, save_override=None):
         base=10.0,
     )
 
-    operator_name = collision.get("operator", "dense")
-    if operator_name not in SELF_OPERATORS:
-        raise ValueError(f"Unknown collision.operator={operator_name!r}. Use one of {sorted(SELF_OPERATORS)}.")
-
-    C_self_operator = SELF_OPERATORS[operator_name]
+    statistics, C_self_operator = select_self_collision_operator(collision)
     lam_values = collision.get("lambda_self_values")
     if lam_values is None:
         lam_values = [float(collision.get("lambda_self", 5e-4))]
@@ -192,31 +306,36 @@ def run_fbe(config, save_override=None):
         Ng = int(collision.get("Ng", 12))
         n_windows = int(hybrid.get("n_windows", 400))
         rk4_steps_per_window = int(hybrid.get("rk4_steps_per_window", 1))
-        af = float(physics["af"])
+        af = endpoints["af"]
 
-        run_name = config.get("run_name")
-        if run_name is None:
-            run_name = make_run_name(
-                prefix=config.get("run_name_prefix", "hybrid_saved"),
-                q=q,
-                lam_self=lam_self,
-                Ng=Ng,
-                batch_size=batch_size,
-                n_windows=n_windows,
-                rk4_steps_per_window=rk4_steps_per_window,
-                af=af,
-            )
+        run_name = resolve_run_name(
+            config=config,
+            lam_self=lam_self,
+            lam_values=lam_values,
+            q=q,
+            Ng=Ng,
+            batch_size=batch_size,
+            n_windows=n_windows,
+            rk4_steps_per_window=rk4_steps_per_window,
+            x_final=endpoints["x_final"],
+        )
 
-        metadata = make_common_metadata(config, q, lam_self=lam_self, run_name=run_name)
+        metadata = make_common_metadata(
+            config,
+            q,
+            endpoints=endpoints,
+            lam_self=lam_self,
+            run_name=run_name,
+        )
 
         print("=" * 80)
         print(f"Starting fBE run: {run_name}")
-        print(f"device={device}, dtype={dtype}, operator={operator_name}, save={save}")
+        print(f"device={device}, dtype={dtype}, statistics={statistics}, save={save}")
         print("=" * 80)
 
         traj = run_hybrid_FI_then_adaptive_self(
             f0=f0_base.clone(),
-            a0=float(physics["a0"]),
+            a0=endpoints["a0"],
             af=af,
             q=q,
             m_chi=float(physics["m_chi"]),
@@ -228,6 +347,7 @@ def run_fbe(config, save_override=None):
             Gamma_X=float(physics["gamma_condensate"]),
             mX=float(physics["m_condensate"]),
             lam_self=lam_self,
+            multiplicity_X=multiplicity_X,
             C_self_operator=C_self_operator,
             batch_size=batch_size,
             Ng=Ng,
@@ -254,8 +374,8 @@ def run_fbe(config, save_override=None):
             clip_negative=bool(stability.get("clip_negative", True)),
             clip_tol=float(stability.get("clip_tol", 0.0)),
             out_path_pt="trajectory.pt" if save else None,
-            out_path_dat="trajectory.dat" if save else None,
-            results_dir=config.get("results_dir", "results"),
+            out_path_dat="trajectory.dat" if save and save_dat else None,
+            results_dir=str(results_dir),
             run_name=run_name if save else None,
             metadata=metadata if save else None,
         )
@@ -267,7 +387,7 @@ def run_fbe(config, save_override=None):
         print(f"min={float(f_final.min().detach().cpu()):.6e}")
         print(f"max={float(f_final.max().detach().cpu()):.6e}")
         if save:
-            print(f"Saved to: {config.get('results_dir', 'results')}/{run_name}/")
+            print(f"Saved to: {results_dir / run_name}/")
 
         results[run_name] = {
             "finite": bool(torch.isfinite(f_final).all().item()),
@@ -286,12 +406,14 @@ def run_cbe(config, save_override=None):
     save = bool(config.get("save", True)) if save_override is None else bool(save_override)
     physics = config["physics"]
     cbe = config.get("cbe", {})
+    results_dir = run_group_dir(config, "cbe_run_group", "cBE")
 
     cbe_config = dict(config)
     cbe_config["cosmology"] = dict(config.get("cosmology", {}))
     cbe_config["cosmology"]["use_torch_tables"] = False
     cosmo = make_cosmology(cbe_config)
-    af = float(cbe.get("af", physics.get("af", 30000.0)))
+    endpoints = resolve_endpoints(config, cosmo, af_override=cbe.get("af", None))
+    af = endpoints["af"]
     _, nX_of_a = make_condensate(config, cosmo, af=af)
 
     sol, Ns, Ts, Y_sol, Y_obs, ratio = solve_free_in_loga_with_abundance(
@@ -299,7 +421,7 @@ def run_cbe(config, save_override=None):
         ms=float(physics["m_chi"]),
         lhs=float(physics["lambda_portal"]),
         xi_inf=float(physics.get("xi_inf", 1e-4)),
-        ai=float(physics["a0"]),
+        ai=endpoints["a0"],
         af=af,
         mh=float(physics["m_h"]),
         v=float(physics["v_h"]),
@@ -321,7 +443,7 @@ def run_cbe(config, save_override=None):
     print(f"  ratio    = {ratio:.6e}")
 
     if save:
-        out_dir = PROJECT_ROOT / config.get("results_dir", "results") / config.get("run_name", "cbe_benchmark")
+        out_dir = results_dir
         out_dir.mkdir(parents=True, exist_ok=True)
 
         metadata = {
@@ -330,12 +452,17 @@ def run_cbe(config, save_override=None):
             "Y_solver": float(Y_sol),
             "Y_obs": float(Y_obs),
             "ratio": float(ratio),
+            "a0": float(endpoints["a0"]),
             "af": af,
+            "T_initial": float(endpoints["T_initial"]),
+            "T_final": float(endpoints["T_final"]),
+            "x_initial": float(endpoints["x_initial"]),
+            "x_final": float(endpoints["x_final"]),
             "physics": physics,
             "cbe": cbe,
         }
 
-        a_eval = np.logspace(np.log10(float(physics["a0"])), np.log10(af), 500)
+        a_eval = np.logspace(np.log10(endpoints["a0"]), np.log10(af), 500)
         N_eval = np.array([Ns(a) for a in a_eval])
         T_eval = np.array([Ts(a) for a in a_eval])
 
@@ -354,7 +481,7 @@ def main():
 
     for mode in ("fbe", "cbe"):
         sub = subparsers.add_parser(mode)
-        sub.add_argument("--config", default="configs/fbe_benchmark.json")
+        sub.add_argument("--config", default="configs/quickstart.json")
         save_group = sub.add_mutually_exclusive_group()
         save_group.add_argument("--save", action="store_true", default=None)
         save_group.add_argument("--no-save", action="store_false", dest="save", default=None)

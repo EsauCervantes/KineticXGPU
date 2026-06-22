@@ -3,9 +3,7 @@ from grid_log import interp1d_monotonic_torch
 
 import numpy as np
 from scipy.interpolate import CubicSpline, PchipInterpolator
-from scipy.special import kn
 import torch
-
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -86,23 +84,6 @@ class VariableGCosmology:
         T = np.asarray(T, dtype=float)
         return np.sqrt(self.rho_rad(T) / (3.0 * self.Mpl**2))
 
-    def Hbar_of_T(self, T):
-        T = np.asarray(T, dtype=float)
-        T_eval = np.minimum(T, self.T_smax)
-        dgs_dlog10T = self._g_s_interp.derivative()(np.log10(T_eval))
-        dgs_dT = dgs_dlog10T / (T_eval * np.log(10.0))
-        correction = 1.0 + T_eval * dgs_dT / (3.0 * self.g_s(T_eval))
-        return self.H_of_T(T_eval) / correction
-
-    def rho_eq_massive(self, T, m):
-        T = np.asarray(T, dtype=float)
-        z = m / T
-        return (m**3 * T / (2.0 * np.pi**2)) * (kn(1, z) + 3.0 * T / m * kn(2, z))
-
-    def nphieq_x(self, x, m):
-        x = np.asarray(x, dtype=float)
-        return (m**3 / (2.0 * np.pi**2 * x)) * kn(2, x)
-
     def _build_T_of_a(self):
         T_grid = np.logspace(np.log10(self.Tmin), np.log10(self.Trh), self.npts)
         s_rh = self.entropy_density(self.Trh)
@@ -119,14 +100,31 @@ class VariableGCosmology:
         else:
             self._T_of_a_interp = PchipInterpolator(a_grid, T_grid, extrapolate=True)
 
+        self._a_of_T_interp = PchipInterpolator(T_grid[::-1], a_grid[::-1], extrapolate=True)
+
         self.domain = (float(a_grid.min()), float(a_grid.max()))
+        self.T_domain = (float(T_grid.min()), float(T_grid.max()))
 
     def T_of_a(self, a):
         return self._T_of_a_interp(a)
 
+    def a_of_T(self, T):
+        T = np.asarray(T, dtype=float)
+        if np.any(T <= 0.0):
+            raise ValueError("Temperature must be positive.")
+        if np.any(T > self.Trh):
+            raise ValueError(f"Temperature cannot exceed Trh={self.Trh:g} GeV.")
+        return self._a_of_T_interp(T)
+
+    def a_of_x(self, x, m):
+        x = np.asarray(x, dtype=float)
+        if np.any(x <= 0.0):
+            raise ValueError("x=m/T must be positive.")
+        return self.a_of_T(float(m) / x)
+
     def H_of_a(self, a):
         return self.H_of_T(self.T_of_a(a))
-    
+
     def build_torch_tables(self, device=None, dtype=torch.float64):
         T_grid = np.logspace(np.log10(self.Tmin), np.log10(self.Trh), self.npts)
         s_rh = self.entropy_density(self.Trh)
@@ -183,5 +181,3 @@ class VariableGCosmology:
         )
 
         return torch.exp(logH)
-    
-    
