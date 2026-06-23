@@ -138,8 +138,9 @@ CSV outputs are written to `results/CPU-GPU_benchmarks/`.
 
 ## BEST Comparison
 
-BEST is not included in this repository. To reproduce the independent
-implementation comparison, clone BEST separately and pass its local path:
+BEST is not included in this repository. To run a new independent
+implementation comparison, clone BEST separately and pass its local path. For a
+small comparison run:
 
 ```bash
 python3 scripts/benchmark_best_comparison.py \
@@ -148,6 +149,26 @@ python3 scripts/benchmark_best_comparison.py \
   --dtype float64 \
   --N-list 32 48 64 96
 ```
+
+The retained paper CSV used `Ng=18`, memory-aware CUDA batching, and CPU rows
+for KineticXGPU:
+
+```bash
+python3 scripts/benchmark_best_comparison.py \
+  --best-dir /path/to/BEST \
+  --device cuda \
+  --dtype float64 \
+  --include-this-work-cpu \
+  --memory-aware-batch-size \
+  --N-list 32 48 64 96 \
+  --Ng 18 \
+  --warmup 20 \
+  --repeats 20
+```
+
+The archived CSV also includes FP32 CUDA rows. The current command-line
+interface runs one dtype at a time, so those rows require a separate run with
+`--dtype float32` or the retained CSV below.
 
 Use `--skip-best` to benchmark only the KineticXGPU operator.
 
