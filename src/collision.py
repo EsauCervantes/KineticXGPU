@@ -416,6 +416,13 @@ def _C_quantum_impl(
     a = torch.as_tensor(a, device=device, dtype=dtype)
     m = torch.as_tensor(m, device=device, dtype=dtype)
     eta = torch.as_tensor(stat_eta, device=device, dtype=dtype)
+    f_min = torch.finfo(dtype).tiny
+    f_safe = torch.clamp(f, min=f_min)
+    if stat_eta < 0.0:
+        f_safe = torch.clamp(
+            f_safe,
+            max=torch.as_tensor(1.0 - 10.0 * torch.finfo(dtype).eps, device=device, dtype=dtype),
+        )
 
     N = q.numel()
     p = q / a
@@ -428,8 +435,8 @@ def _C_quantum_impl(
     dp_n = dp_vec.view(1, N, 1)
     dp_m = dp_vec.view(1, 1, N)
 
-    f_n = f.view(1, N, 1)
-    f_m = f.view(1, 1, N)
+    f_n = f_safe.view(1, N, 1)
+    f_m = f_safe.view(1, 1, N)
 
     pn = p.view(1, N, 1)
     pm = p.view(1, 1, N)
@@ -490,13 +497,24 @@ def _C_quantum_impl(
         wR = torch.clamp(wR, 0.0, 1.0)
         wL = 1.0 - wR
 
-        f_floor = torch.clamp(
-            torch.max(torch.abs(f)) * 1e-300,
-            min=torch.finfo(dtype).tiny,
-        )
-        logfL = torch.log(torch.clamp(f[jL], min=f_floor))
-        logfR = torch.log(torch.clamp(f[jR], min=f_floor))
-        ftil_interp = torch.exp(wL * logfL + wR * logfR)
+        # Quantum equilibrium has
+        #
+        #     f / (1 + eta f) = z exp(-E/T),
+        #
+        # with eta=+1 for Bose-Einstein and eta=-1 for Fermi-Dirac
+        # statistics.  Interpolating this logarithm linearly in energy
+        # preserves detailed balance for quantum equilibrium shapes.
+        fL = f_safe[jL]
+        fR = f_safe[jR]
+        yL = torch.log(fL / torch.clamp(1.0 + eta * fL, min=f_min))
+        yR = torch.log(fR / torch.clamp(1.0 + eta * fR, min=f_min))
+        rtil = torch.exp(wL * yL + wR * yR)
+        if stat_eta > 0.0:
+            rtil = torch.clamp(
+                rtil,
+                max=torch.as_tensor(1.0 - 10.0 * torch.finfo(dtype).eps, device=device, dtype=dtype),
+            )
+        ftil_interp = rtil / torch.clamp(1.0 - eta * rtil, min=f_min)
 
         ftil = torch.where(
             inside_q,
@@ -508,7 +526,7 @@ def _C_quantum_impl(
             pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0
         )
 
-        fi = f[ib].view(-1, 1, 1)
+        fi = f_safe[ib].view(-1, 1, 1)
         valid = phys_ptil & inside_q
 
         gain = f_n * f_m * (1.0 + eta * fi) * (1.0 + eta * ftil)
