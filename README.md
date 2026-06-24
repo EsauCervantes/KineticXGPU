@@ -190,8 +190,10 @@ The retained comparison was produced on:
 
 | Component | Specification |
 |:--|:--|
+| System | Lenovo ThinkPad P15 Gen 1 |
 | CPU | Intel Core i7-10750H @ 2.60 GHz, 6 cores / 12 threads |
 | GPU | NVIDIA Quadro T2000 Mobile / Max-Q, 4 GB memory |
+| System memory | 32 GB RAM |
 | CUDA version | 12.2 |
 
 ## Notes
