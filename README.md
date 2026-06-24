@@ -1,14 +1,14 @@
 # KineticXGPU
 
-KineticXGPU is a PyTorch-based solver for cosmological Boltzmann equations at
+KineticXGPU is a PyTorch-based solver for the cosmological Boltzmann equation, $df/dt = C$, at
 the phase-space level. It follows the evolution of an isotropic dark-sector
 distribution during freeze-in production and subsequent elastic 2 -> 2
 self-scattering, allowing direct comparison with the usual integrated
-number-density Boltzmann equation.
+number-density and temperature Boltzmann equations.
 
 The main numerical bottleneck is the self-scattering collision operator. After
 discretizing the Boltzmann equation on a momentum grid, this operator takes the
-form of a large bilinear sum over momentum bins. That is expensive on a CPU, but
+form of a large bilinear (nested) sum over momentum bins, $C_{2\to 2}\to\sum_{n,m}$. That is expensive on a CPU, but
 naturally parallel on a GPU. KineticXGPU uses PyTorch not for machine learning,
 but because the same tensor machinery that accelerates neural networks also
 accelerates this collision integral.
