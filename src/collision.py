@@ -14,6 +14,17 @@ def two_body_energy_at_rest(m_parent, m_daughter, m_other=0.0):
     return (m_parent**2 + m_daughter**2 - m_other**2) / (2.0 * m_parent)
 
 
+def _background_tensor(callback, a, device, dtype, background_torch=False):
+    if background_torch:
+        value = callback(a)
+    else:
+        value = float(callback(float(a)))
+
+    if torch.is_tensor(value):
+        return value.to(device=device, dtype=dtype)
+    return torch.as_tensor(value, device=device, dtype=dtype)
+
+
 def _leggauss_torch(Ng, device, dtype):
     x, w = np.polynomial.legendre.leggauss(Ng)
     return (
@@ -737,6 +748,7 @@ def C_condensate_decay(
     m_other=0.0,
     multiplicity=1.0,
     gchi=1.0,
+    background_torch=False,
 ):
     q = torch.as_tensor(q)
     device, dtype = q.device, q.dtype
@@ -748,7 +760,13 @@ def C_condensate_decay(
     Gamma_parent = torch.as_tensor(Gamma_parent, device=device, dtype=dtype)
     multiplicity = torch.as_tensor(multiplicity, device=device, dtype=dtype)
 
-    n_parent = torch.as_tensor(float(n_parent_of_a(float(a))), device=device, dtype=dtype)
+    n_parent = _background_tensor(
+        n_parent_of_a,
+        a,
+        device=device,
+        dtype=dtype,
+        background_torch=background_torch,
+    )
 
     E0 = (m_parent**2 + m_chi**2 - m_other**2) / (2.0 * m_parent)
     p0sq = E0**2 - m_chi**2
@@ -790,6 +808,7 @@ def rhs_df_da_generic(
     multiplicity2=1.0,
     gchi=1.0,
     pref_FI=1.0,
+    background_torch=False,
 ):
     device, dtype = f.device, f.dtype
     p = q / a
@@ -797,7 +816,13 @@ def rhs_df_da_generic(
     C_src = 0.0
 
     if T_of_a is not None and m_h is not None and g_trilinear is not None:
-        Tt = torch.as_tensor(float(T_of_a(float(a))), device=device, dtype=dtype)
+        Tt = _background_tensor(
+            T_of_a,
+            a,
+            device=device,
+            dtype=dtype,
+            background_torch=background_torch,
+        )
         C_src = C_src + C_Higgs_decay(
             p=p,
             T=Tt,
@@ -818,6 +843,7 @@ def rhs_df_da_generic(
             m_other=m_other2,
             multiplicity=multiplicity2,
             gchi=gchi,
+            background_torch=background_torch,
         )
 
     C_self = 0.0
@@ -832,7 +858,13 @@ def rhs_df_da_generic(
 
     C_tot = C_src + C_self
 
-    Ht = torch.as_tensor(float(H_of_a(float(a))), device=device, dtype=dtype)
+    Ht = _background_tensor(
+        H_of_a,
+        a,
+        device=device,
+        dtype=dtype,
+        background_torch=background_torch,
+    )
     a_t = torch.as_tensor(a, device=device, dtype=dtype)
 
     return C_tot / (a_t * Ht)
@@ -859,12 +891,19 @@ def rhs_df_da_FI(
     multiplicity2=1.0,
     gchi=1.0,
     pref_FI=1.0,
+    background_torch=False,
 ):
     C_tot = 0.0
     p = q / a
 
     if T_of_a is not None and m_h is not None and g_trilinear is not None:
-        Tt = torch.as_tensor(float(T_of_a(float(a))), device=f.device, dtype=f.dtype)
+        Tt = _background_tensor(
+            T_of_a,
+            a,
+            device=f.device,
+            dtype=f.dtype,
+            background_torch=background_torch,
+        )
         C_tot = C_tot + C_Higgs_decay(
             p=p,
             T=Tt,
@@ -885,9 +924,16 @@ def rhs_df_da_FI(
             m_other=m_other2,
             multiplicity=multiplicity2,
             gchi=gchi,
+            background_torch=background_torch,
         )
 
-    Ht = torch.as_tensor(float(H_of_a(float(a))), device=f.device, dtype=f.dtype)
+    Ht = _background_tensor(
+        H_of_a,
+        a,
+        device=f.device,
+        dtype=f.dtype,
+        background_torch=background_torch,
+    )
     a_t = torch.as_tensor(a, device=f.device, dtype=f.dtype)
 
     return C_tot / (a_t * Ht)

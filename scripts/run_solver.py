@@ -22,7 +22,7 @@ if str(SRC_DIR) not in sys.path:
 from cBE_solver import solve_condensate_N_loga_quad, solve_free_in_loga_with_abundance
 from collision import C_MB, C_quantum
 from cosmology import VariableGCosmology
-from grid_log import make_log_q_grid
+from grid_log import interp1d_monotonic_torch, make_log_q_grid
 from solver import run_hybrid_FI_then_adaptive_self
 
 
@@ -107,7 +107,7 @@ def make_cosmology(config, device=None, dtype=None):
     return cosmo
 
 
-def make_condensate(config, cosmo, af):
+def make_condensate(config, cosmo, af, *, device=None, dtype=None, use_torch=False):
     physics = config["physics"]
     cbe = config.get("cbe", {})
 
@@ -115,18 +115,41 @@ def make_condensate(config, cosmo, af):
     a0 = endpoints["a0"]
     n_init = float(physics["n_condensate_initial"])
     N_init = a0**3 * n_init
+    zero_rel = float(cbe.get("condensate_zero_rel", 1e-14))
 
-    _, _, build_condensate = solve_condensate_N_loga_quad(
+    _, u_grid, build_condensate = solve_condensate_N_loga_quad(
         H_of_a=cosmo.H_of_a,
         N_init=N_init,
         ai=a0,
         af=af,
         n_eval=int(cbe.get("condensate_n_eval", 4000)),
-        zero_rel=float(cbe.get("condensate_zero_rel", 1e-14)),
+        zero_rel=zero_rel,
     )
 
     gamma = float(physics["gamma_condensate"])
-    _, N_of_a, n_of_a = build_condensate(gamma)
+    N_grid, N_of_a, n_of_a = build_condensate(gamma)
+
+    if use_torch:
+        if device is None or dtype is None:
+            raise ValueError("device and dtype are required for tensor-native condensate callbacks.")
+
+        u_grid_t = torch.as_tensor(u_grid, device=device, dtype=dtype)
+        N_grid_t = torch.as_tensor(N_grid, device=device, dtype=dtype)
+        threshold_t = torch.as_tensor(zero_rel * N_init, device=device, dtype=dtype)
+
+        def n_of_a_torch(a):
+            a_t = torch.as_tensor(a, device=device, dtype=dtype)
+            N_t = interp1d_monotonic_torch(
+                u_grid_t,
+                N_grid_t,
+                torch.log(a_t),
+                clamp=True,
+            )
+            N_t = torch.where(N_t < threshold_t, torch.zeros_like(N_t), N_t)
+            return N_t / torch.clamp(a_t**3, min=torch.finfo(dtype).tiny)
+
+        return N_of_a, n_of_a_torch
+
     return N_of_a, n_of_a
 
 
@@ -276,12 +299,20 @@ def run_fbe(config, save_override=None):
     save_dat = bool(config.get("save_dat", False))
     multiplicity_X = float(physics.get("multiplicity_condensate", 2.0))
 
+    use_torch_background = bool(config_get(config, "cosmology", "use_torch_tables", False))
     cosmo = make_cosmology(config, device=device, dtype=dtype)
-    H_of_a = cosmo.H_of_a_torch if config_get(config, "cosmology", "use_torch_tables", False) else cosmo.H_of_a
-    T_of_a = cosmo.T_of_a_torch if config_get(config, "cosmology", "use_torch_tables", False) else cosmo.T_of_a
+    H_of_a = cosmo.H_of_a_torch if use_torch_background else cosmo.H_of_a
+    T_of_a = cosmo.T_of_a_torch if use_torch_background else cosmo.T_of_a
     endpoints = resolve_endpoints(config, cosmo)
 
-    _, nX_of_a = make_condensate(config, cosmo, af=endpoints["af"])
+    _, nX_of_a = make_condensate(
+        config,
+        cosmo,
+        af=endpoints["af"],
+        device=device,
+        dtype=dtype,
+        use_torch=use_torch_background,
+    )
 
     q, _, _, _ = make_log_q_grid(
         float(grid["q_min"]),
@@ -348,6 +379,7 @@ def run_fbe(config, save_override=None):
             mX=float(physics["m_condensate"]),
             lam_self=lam_self,
             multiplicity_X=multiplicity_X,
+            background_torch=use_torch_background,
             C_self_operator=C_self_operator,
             batch_size=batch_size,
             Ng=Ng,

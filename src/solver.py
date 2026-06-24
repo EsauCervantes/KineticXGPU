@@ -951,6 +951,7 @@ def run_hybrid_FI_then_adaptive_self(
     mX,
     lam_self,
     multiplicity_X=2.0,
+    background_torch=False,
     C_self_operator=C_MB,
     batch_size=64,
     Ng=12,
@@ -1048,6 +1049,7 @@ def run_hybrid_FI_then_adaptive_self(
         multiplicity2=multiplicity_X,
         gchi=1.0,
         pref_FI=1.0,
+        background_torch=background_torch,
     )
 
     # ------------------------------------------------------------
@@ -1069,6 +1071,7 @@ def run_hybrid_FI_then_adaptive_self(
         multiplicity2=multiplicity_X,
         gchi=1.0,
         pref_FI=1.0,
+        background_torch=background_torch,
     )
 
     Cself_diag = partial(
