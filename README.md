@@ -8,7 +8,7 @@ number-density and temperature Boltzmann equations.
 
 The main numerical bottleneck is the self-scattering collision operator. After
 discretizing the Boltzmann equation on a momentum grid, this operator takes the
-form of a large bilinear (nested) sum over momentum bins, $C_{2\to 2}\to\sum_{n,m}$. That is expensive on a CPU, but
+form of a large bilinear (nested) sum over momentum bins, $C\to\sum$. That is expensive on a CPU, but
 naturally parallel on a GPU. KineticXGPU uses PyTorch not for machine learning,
 but because the same tensor machinery that accelerates neural networks also
 accelerates this collision integral.
