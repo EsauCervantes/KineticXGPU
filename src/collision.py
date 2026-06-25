@@ -215,7 +215,8 @@ def _C_MB_impl(
     En = E.view(1, N, 1)
     Em = E.view(1, 1, N)
 
-    # Symmetry factor for identical particles in the integrated pair.
+    # External-particle normalization; together with the division by E_i below this gives 1/(2E_i).
+    # Symmetry factor for identical particles in the integrated pair is taken to be 1.
     pref0 = 0.5
     C = torch.empty_like(f)
 
@@ -316,7 +317,7 @@ def _C_MB_impl(
         # Convention correction:
         #
         # The self-scattering integral constructed here follows the
-        # paper convention:
+        # convention of https://arxiv.org/pdf/2204.07078:
         #
         #     E_i df_i/dt = C_i
         #
