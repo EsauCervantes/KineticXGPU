@@ -313,22 +313,7 @@ def _C_MB_impl(
             torch.zeros_like(ftil),
         )
 
-        # ----------------------------
-        # Convention correction:
-        #
-        # The self-scattering integral constructed here follows the
-        # convention of https://arxiv.org/pdf/2204.07078:
-        #
-        #     E_i df_i/dt = C_i
-        #
-        # but rhs_df_da_generic expects a source in the
-        # same convention as freeze-in:
-        #
-        #     df_i/dt
-        #
-        # -----------------------------------------------------------
-        C_batch_paper = pref0 * torch.sum(w_nm * F * gain_loss, dim=(1, 2))
-        C[start:end] = C_batch_paper / E[ib]
+        C[start:end] = pref0 * torch.sum(w_nm * F * gain_loss, dim=(1, 2)) / E[ib]
 
         if return_diagnostics:
             assert total_valid is not None
@@ -550,8 +535,7 @@ def _C_quantum_impl(
             torch.zeros_like(ftil),
         )
 
-        C_batch_paper = pref0 * torch.sum(w_nm * F * gain_loss, dim=(1, 2))
-        C[start:end] = C_batch_paper / E[ib]
+        C[start:end] = pref0 * torch.sum(w_nm * F * gain_loss, dim=(1, 2)) / E[ib]
 
         if return_diagnostics:
             assert total_valid is not None
