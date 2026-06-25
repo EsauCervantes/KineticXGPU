@@ -1,22 +1,14 @@
 # KineticXGPU
 
 
-The main numerical bottleneck in the Boltzmann equation, df/dt = C, is the self-scattering collision operator. After
-discretizing the equation on a momentum grid, this operator takes the
-form of a large bilinear (nested) sum over momentum bins, $C\to\sum$. That is expensive on a CPU, but
-naturally parallel on a GPU. KineticXGPU uses PyTorch not for machine learning,
-but because the same tensor machinery that accelerates neural networks also
-accelerates this collision integral.
+KineticXGPU is a PyTorch-based solver for the cosmological Boltzmann equation, df/dt = C, at the phase-space level. The code follows an isotropic dark-sector distribution during freeze-in production and elastic 2 -> 2 self-scattering.
 
-KineticXGPU is a PyTorch-based solver for the cosmological Boltzmann equation at
-the phase-space level. It follows the evolution of an isotropic dark-sector
-distribution during freeze-in production and subsequent elastic 2 -> 2
-self-scattering, allowing direct comparison with the usual integrated
-number-density and temperature Boltzmann equations.
+If dark matter is produced with a non-thermal momentum distribution, how does self-scattering actually relax it toward a Maxwell-Boltzmann, Bose-Einstein or Fermi-Dirac shape? Integrated number-density equations cannot answer this directly, because the shape of the distribution has already been assumed, reducing the problem to a set of ODEs. Here, by contrast, the full distribution f(q,t) is evolved on a momentum grid.
 
-The repository includes the hybrid freeze-in/self-scattering solver used in the
-paper, a companion cBE solver for comparison, scripts to reproduce the saved
-figures, and benchmark utilities for CPU/GPU and BEST comparisons.
+The main numerical bottleneck is the self-scattering collision operator. After discretization, the operator becomes a large bilinear sum over momentum bins. This is slow on a CPU, but embarrassingly parallel and well suited for a GPU; i.e., a similar tensor structure that appears in machine-learning neural networks. KineticXGPU uses PyTorch to exploit this tensor/GPU infrastructure for a physics collision integral.
+
+The repository includes the hybrid freeze-in/self-scattering solver used in the paper, a companion integrated Boltzmann-equation solver for comparison, scripts to reproduce the saved figures, and benchmark utilities for CPU/GPU and BEST comparisons.
+
 
 ## Repository Layout
 
