@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kineticxgpu"
+version = "0.1.0"
+description = "PyTorch-based Boltzmann collision operators and solvers for cosmological kinetic theory."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "torch",
+    "matplotlib",
+    "pandas",
+]
+
+[project.scripts]
+kineticxgpu-collision = "kineticxgpu.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = [
+    "collision",
+    "cosmology",
+    "cBE_solver",
+    "grid_log",
+    "solver",
+    "thermodynamics",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kineticxgpu*"]

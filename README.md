@@ -10,46 +10,66 @@ The main numerical bottleneck is the self-scattering collision operator. After d
 The repository includes the hybrid freeze-in/self-scattering solver used in the paper, a companion integrated Boltzmann-equation solver for comparison, scripts to reproduce the saved figures, and benchmark utilities for CPU/GPU and BEST comparisons.
 
 
-## Repository Layout
-
-```text
-src/
-  collision.py        self-collision operators, source terms, diagnostics
-  solver.py           RK4, adaptive Heun, and hybrid fBE solver
-  cBE_solver.py       coupled Boltzmann-equation comparison solver
-  cosmology.py        cosmological background functions
-  grid_log.py         logarithmic momentum-grid utilities
-  thermodynamics.py   equilibrium and source-rate helpers
-
-scripts/
-  run_solver.py                 run the cBE and fBE solvers
-  plot_figures.py               plot saved fBE/cBE runs
-  benchmark.py                  isolated operator CPU/GPU benchmarks
-  benchmark_best_comparison.py  optional comparison against a local BEST checkout
-
-configs/
-  quickstart.json       small CPU/GPU-auto run for testing the installation
-  paper_benchmark.json  heavier settings used for the paper scan
-```
-
-Generated runs and plots are written under `results/` and ignored by Git. The
-only result file kept in the repository is the BEST-comparison CSV used in the
-paper.
-
 ## Installation
 
 Create an environment with Python 3.10 or newer, then install the Python
-dependencies:
+dependencies and the local package:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 ```
 
 For CUDA runs, install a PyTorch build compatible with your CUDA driver. See the
 official PyTorch installation selector if the default `pip install torch` does
 not provide CUDA support on your system.
+
+## Library Usage
+
+The repository can also be used as a small Python library for evaluating the
+contact self-collision operator:
+
+```python
+import torch
+
+from kineticxgpu import ContactSelfCollisionOperator, make_log_grid
+
+q = make_log_grid(1e-3, 10.0, 32, dtype=torch.float64)
+f = 1e-6 * torch.exp(-q)
+
+collision = ContactSelfCollisionOperator(
+    q=q,
+    mass=1.0,
+    coupling=1e-3,
+    statistics="classical",
+    Ng=8,
+    batch_size=8,
+)
+
+C, E, p, dp = collision.evaluate(f, a=1.0)
+```
+
+The command-line wrapper reads an input `.npz` file containing arrays named
+`f` and `q`, then writes the collision term to another `.npz` file:
+
+```bash
+kineticxgpu-collision \
+  --input input_distribution.npz \
+  --output collision_output.npz \
+  --mass 1.0 \
+  --coupling 1e-3 \
+  --statistics classical \
+  --Ng 8 \
+  --batch-size 8
+```
+
+Run the API smoke test with:
+
+```bash
+python3 tests/test_api_smoke.py
+```
 
 ## Quickstart
 
@@ -188,6 +208,32 @@ The retained comparison was produced on:
 | GPU | NVIDIA Quadro T2000 Mobile / Max-Q, 4 GB memory |
 | System memory | 32 GB RAM |
 | CUDA version | 12.2 |
+
+## Repository Layout
+
+```text
+src/
+  collision.py        self-collision operators, source terms, diagnostics
+  solver.py           RK4, adaptive Heun, and hybrid fBE solver
+  cBE_solver.py       coupled Boltzmann-equation comparison solver
+  cosmology.py        cosmological background functions
+  grid_log.py         logarithmic momentum-grid utilities
+  thermodynamics.py   equilibrium and source-rate helpers
+
+scripts/
+  run_solver.py                 run the cBE and fBE solvers
+  plot_figures.py               plot saved fBE/cBE runs
+  benchmark.py                  isolated operator CPU/GPU benchmarks
+  benchmark_best_comparison.py  optional comparison against a local BEST checkout
+
+configs/
+  quickstart.json       small CPU/GPU-auto run for testing the installation
+  paper_benchmark.json  heavier settings used for the paper scan
+```
+
+Generated runs and plots are written under `results/` and ignored by Git. The
+only result file kept in the repository is the BEST-comparison CSV used in the
+paper.
 
 ## Notes
 
