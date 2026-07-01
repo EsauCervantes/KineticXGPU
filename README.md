@@ -9,6 +9,14 @@ The main numerical bottleneck is the self-scattering collision operator. After d
 
 The repository includes the hybrid freeze-in/self-scattering solver used in the paper, a companion integrated Boltzmann-equation solver for comparison, scripts to reproduce the saved figures, and benchmark utilities for CPU/GPU and BEST comparisons.
 
+## Paper
+
+This code accompanies the paper **KineticXGPU: A Tensorized Collision Operator
+for Dark-Sector Self-Scattering**. arXiv link coming soon.
+
+## License
+
+KineticXGPU is released under the [MIT License](LICENSE).
 
 ## Installation
 
