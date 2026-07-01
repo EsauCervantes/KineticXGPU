@@ -61,7 +61,6 @@
     "safety": 0.9,
     "store_every_accepted": 2,
     "print_every_accepted": 20,
-    "project_source_moments": false,
     "record_raw_diagnostics": true,
     "self_diagnostics": true,
     "diagnostics_every": 1

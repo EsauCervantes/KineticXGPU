@@ -975,7 +975,7 @@ def run_hybrid_FI_then_adaptive_self(
     heun_safety=0.95,
     heun_store_every_accepted=200,
     heun_print_every_accepted=50,
-    heun_project_source_moments=True,
+    heun_project_source_moments=False,
     heun_record_raw_diagnostics=False,
     heun_self_diagnostics=False,
     heun_diagnostics_every=1,

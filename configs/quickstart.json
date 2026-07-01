@@ -37,7 +37,7 @@
   "collision": {
     "_comment": "Self-collision statistics: classical, boson, or fermion.",
     "statistics": "classical",
-    "lambda_self_values": [5e-5, 1e-4,3e-4, 8e-4],
+    "lambda_self_values": [5e-5],
     "Ng": 14,
     "batch_size": 64,
     "enforce_self_projection": true
@@ -62,7 +62,6 @@
     "safety": 0.9,
     "store_every_accepted": 10,
     "print_every_accepted": 20,
-    "project_source_moments": false,
     "record_raw_diagnostics": false,
     "self_diagnostics": false,
     "diagnostics_every": 1
