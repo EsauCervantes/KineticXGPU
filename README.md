@@ -9,21 +9,6 @@ The main numerical bottleneck is the self-scattering collision operator. After d
 
 The repository includes the hybrid freeze-in/self-scattering solver used in the paper, a companion integrated Boltzmann-equation solver for comparison, scripts to reproduce the saved figures, and benchmark utilities for CPU/GPU and BEST comparisons.
 
-## Paper
-
-This code accompanies the paper **KineticXGPU: A Tensorized Collision Operator
-for Dark-Sector Self-Scattering**:
-
-```text
-https://arxiv.org/abs/2607.00755
-```
-
-If you use this code, please cite the paper above.
-
-## License
-
-KineticXGPU is released under the [MIT License](LICENSE).
-
 ## Installation
 
 Create an environment with Python 3.10 or newer, then install the Python
@@ -257,3 +242,30 @@ paper.
   physics scan.
 - The current fBE solver path uses `C_MB` by default. Set
   `collision.statistics` to `boson` or `fermion` to use `C_quantum`.
+
+## Citation
+
+This code accompanies the paper **KineticXGPU: A Tensorized Collision Operator
+for Dark-Sector Self-Scattering**:
+
+```text
+https://arxiv.org/abs/2607.00755
+```
+
+If you use KineticXGPU, please cite:
+
+```bibtex
+@article{Cervantes:2026fbk,
+    author = "Cervantes, Esau",
+    title = "{KineticXGPU: A Tensorized Collision Operator for Dark-Sector Self-Scattering}",
+    eprint = "2607.00755",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    month = "7",
+    year = "2026"
+}
+```
+
+## License
+
+KineticXGPU is released under the [MIT License](LICENSE).
