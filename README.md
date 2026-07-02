@@ -5,14 +5,20 @@ KineticXGPU is a PyTorch-based solver for the cosmological Boltzmann equation, d
 
 If dark matter is produced with a nonthermal momentum distribution, how does self-scattering relax it toward a Maxwell-Boltzmann, Bose-Einstein or Fermi-Dirac shape? Integrated number-density and temperature equations cannot answer this because the shape of the distribution has already been assumed, reducing the problem to a set of ODEs. Here, by contrast, the full distribution f(q,t) is evolved on a momentum grid.
 
-The main numerical bottleneck is the self-scattering collision operator. After discretization, the operator becomes a large bilinear sum over momentum bins. This is slow on a CPU, but embarrassingly parallel and well suited for a GPU; i.e., a similar tensor structure that appears in machine-learning neural networks. KineticXGPU uses PyTorch to exploit this tensor/GPU infrastructure for a physics collision integral.
+The main numerical bottleneck is the self-scattering collision operator. After discretization, the operator becomes a large bilinear sum over momentum bins. The dense evaluation scales as O(Ng Ngrid^3), where Ng is the angular quadrature order and Ngrid is the number of momentum bins. This is slow on a CPU, but embarrassingly parallel and well suited for a GPU; i.e., a similar tensor structure that appears in machine-learning neural networks. KineticXGPU uses PyTorch to exploit this tensor/GPU infrastructure for a physics collision integral.
 
 The repository includes the hybrid freeze-in/self-scattering solver used in the paper, a companion integrated Boltzmann-equation solver for comparison, scripts to reproduce the saved figures, and benchmark utilities for CPU/GPU and BEST comparisons.
 
 ## Paper
 
 This code accompanies the paper **KineticXGPU: A Tensorized Collision Operator
-for Dark-Sector Self-Scattering**. arXiv link coming soon.
+for Dark-Sector Self-Scattering**:
+
+```text
+https://arxiv.org/abs/2607.00755
+```
+
+If you use this code, please cite the paper above.
 
 ## License
 
