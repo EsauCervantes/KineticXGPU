@@ -112,9 +112,9 @@ def project_self_zero_moments(
 # ============================================================
 
 @torch.no_grad()
-def F_contact(pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0):
+def F_contact(pi, Ei, pn, En, pm, Em, m, lam, mu2, w2, eps_disc=0.0):
     device, dtype = pi.device, pi.dtype
-    mu2, w2 = _leggauss_torch(Ng, device, dtype)
+    Ng = mu2.numel()
 
     lam2 = torch.as_tensor(lam, device=device, dtype=dtype) ** 2
     m2 = torch.as_tensor(m, device=device, dtype=dtype) ** 2
@@ -176,6 +176,39 @@ def F_contact(pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0):
     return torch.clamp(pref * Facc, min=0.0)
 
 
+@torch.no_grad()
+def F_analytical(pi, Ei, pn, En, pm, Em, m, lam, mu2=None, w2=None, eps_disc=0.0):
+    del mu2, w2, eps_disc
+
+    device, dtype = pi.device, pi.dtype
+
+    lam2 = torch.as_tensor(lam, device=device, dtype=dtype) ** 2
+    m = torch.as_tensor(m, device=device, dtype=dtype)
+    m2 = m * m
+
+    Etil = En + Em - Ei
+    phys = Etil >= m
+
+    ptil2 = Etil * Etil - m2
+    ptil = torch.sqrt(torch.clamp(ptil2, min=0.0))
+
+    Qmin_kin = torch.abs(pi - pn)
+    Qmax_kin = pi + pn
+
+    Qmin_tri = torch.abs(pm - ptil)
+    Qmax_tri = pm + ptil
+
+    Qmin = torch.maximum(Qmin_kin, Qmin_tri)
+    Qmax = torch.minimum(Qmax_kin, Qmax_tri)
+    dQ = torch.clamp(Qmax - Qmin, min=0.0)
+
+    pi_safe = torch.clamp(pi, min=torch.finfo(dtype).tiny)
+    pref = lam2 / (64.0 * torch.pi ** 3)
+    F = pref * dQ / pi_safe
+
+    return torch.where(phys, F, torch.zeros_like(F))
+
+
 # ============================================================
 # Self-collision
 # ============================================================
@@ -188,6 +221,8 @@ def _C_MB_impl(
     Ng=16, batch_size=16,
     return_diagnostics=False,
     enforce_self_projection=True,
+    F_func=F_analytical,
+    F_needs_quadrature=False,
 ):
     f = torch.as_tensor(f)
     device, dtype = f.device, f.dtype
@@ -232,6 +267,11 @@ def _C_MB_impl(
         total_all_weight = None
 
     w_nm = dp_n * dp_m
+    if F_needs_quadrature:
+        mu2, w2 = _leggauss_torch(Ng, device, dtype)
+    else:
+        mu2 = torch.empty(0, device=device, dtype=dtype)
+        w2 = torch.empty(0, device=device, dtype=dtype)
 
     for start in range(0, N, batch_size):
         end = min(start + batch_size, N)
@@ -300,8 +340,8 @@ def _C_MB_impl(
             torch.zeros_like(ftil_interp),
             )
 
-        F = F_contact(
-            pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0
+        F = F_func(
+            pi, Ei, pn, En, pm, Em, m, lam, mu2, w2, eps_disc=0.0
         )
 
         fi = f[ib].view(-1, 1, 1)
@@ -375,10 +415,44 @@ def _C_MB_impl(
 
     return C, E, p, dp_vec
 
-def C_MB(*args, **kwargs):
-    if kwargs.get("return_diagnostics", False):
-        return _C_MB_impl(*args, **kwargs)
-    return C_MB_compiled(*args, **kwargs)
+def C_MB(
+    f, a,
+    q,
+    m, lam,
+    Ng=16, batch_size=16,
+    return_diagnostics=False,
+    enforce_self_projection=True,
+    F_func=F_analytical,
+    F_needs_quadrature=False,
+):
+    if return_diagnostics:
+        return _C_MB_impl(
+            f=f,
+            a=a,
+            q=q,
+            m=m,
+            lam=lam,
+            Ng=Ng,
+            batch_size=batch_size,
+            return_diagnostics=True,
+            enforce_self_projection=enforce_self_projection,
+            F_func=F_func,
+            F_needs_quadrature=F_needs_quadrature,
+        )
+
+    return C_MB_compiled(
+        f=f,
+        a=a,
+        q=q,
+        m=m,
+        lam=lam,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=False,
+        enforce_self_projection=enforce_self_projection,
+        F_func=F_func,
+        F_needs_quadrature=F_needs_quadrature,
+    )
 
 C_MB_compiled = torch.compile(_C_MB_impl)
 
@@ -405,6 +479,8 @@ def _C_quantum_impl(
     return_diagnostics=False,
     enforce_self_projection=True,
     stat_eta=1.0,
+    F_func=F_analytical,
+    F_needs_quadrature=False,
 ):
     f = torch.as_tensor(f)
     device, dtype = f.device, f.dtype
@@ -455,6 +531,11 @@ def _C_quantum_impl(
         total_all_weight = None
 
     w_nm = dp_n * dp_m
+    if F_needs_quadrature:
+        mu2, w2 = _leggauss_torch(Ng, device, dtype)
+    else:
+        mu2 = torch.empty(0, device=device, dtype=dtype)
+        w2 = torch.empty(0, device=device, dtype=dtype)
 
     for start in range(0, N, batch_size):
         end = min(start + batch_size, N)
@@ -519,8 +600,8 @@ def _C_quantum_impl(
             torch.zeros_like(ftil_interp),
         )
 
-        F = F_contact(
-            pi, Ei, pn, En, pm, Em, m, lam, Ng, eps_disc=0.0
+        F = F_func(
+            pi, Ei, pn, En, pm, Em, m, lam, mu2, w2, eps_disc=0.0
         )
 
         fi = f_safe[ib].view(-1, 1, 1)
@@ -610,6 +691,8 @@ def C_quantum(
     return_diagnostics=False,
     enforce_self_projection=True,
     statistics="boson",
+    F_func=F_analytical,
+    F_needs_quadrature=False,
 ):
     stat_eta = _stat_eta_from_name(statistics)
     if return_diagnostics:
@@ -624,6 +707,8 @@ def C_quantum(
             return_diagnostics=True,
             enforce_self_projection=enforce_self_projection,
             stat_eta=stat_eta,
+            F_func=F_func,
+            F_needs_quadrature=F_needs_quadrature,
         )
 
     return C_quantum_compiled(
@@ -637,6 +722,8 @@ def C_quantum(
         return_diagnostics=False,
         enforce_self_projection=enforce_self_projection,
         stat_eta=stat_eta,
+        F_func=F_func,
+        F_needs_quadrature=F_needs_quadrature,
     )
 
 # ============================================================
