@@ -245,6 +245,13 @@ paper.
 - The current fBE solver path uses `C_MB` by default. Set
   `collision.statistics` to `boson` or `fermion` to use `C_quantum`.
 
+## Version Notes
+
+The initial arXiv release is archived as tag `v0.1.0`. The current `main`
+branch includes an additional analytical implementation of the contact-interaction
+kernel, `F_analytical()`, alongside the original quadrature implementation,
+`F_contact()`.
+
 ## Citation
 
 This code accompanies the paper **KineticXGPU: A Tensorized Collision Operator
