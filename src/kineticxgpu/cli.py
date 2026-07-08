@@ -42,6 +42,12 @@ def build_parser():
         default="classical",
         choices=["classical", "boson", "fermion"],
     )
+    parser.add_argument(
+        "--kernel-backend",
+        default="analytic",
+        choices=["analytic", "quadrature"],
+        help="Contact-kernel backend.",
+    )
     parser.add_argument("--Ng", type=int, default=16, help="Angular quadrature order.")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default="auto")
@@ -67,6 +73,7 @@ def main(argv=None):
         mass=args.mass,
         coupling=args.coupling,
         statistics=args.statistics,
+        kernel_backend=args.kernel_backend,
         Ng=args.Ng,
         batch_size=args.batch_size,
         enforce_self_projection=not args.no_projection,
@@ -80,6 +87,7 @@ def main(argv=None):
         "mass": args.mass,
         "coupling": args.coupling,
         "statistics": args.statistics,
+        "kernel_backend": args.kernel_backend,
         "Ng": args.Ng,
         "batch_size": args.batch_size,
         "device": str(device),

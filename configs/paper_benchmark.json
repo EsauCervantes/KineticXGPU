@@ -34,9 +34,10 @@
   },
 
   "collision": {
-    "_comment": "Self-collision statistics: classical, boson, or fermion.",
+    "_comment": "Self-collision statistics: classical, boson, or fermion. kernel_backend can be analytic or quadrature.",
     "statistics": "classical",
-    "lambda_self_values": [1e-5,2e-5,3e-5,4e-5,5e-5,6e-5,7e-5,8e-5,9e-5,1e-4, 2e-4, 3e-4, 4e-4, 5e-4, 6e-4, 7e-4, 8e-4, 9e-4, 1e-3],
+    "kernel_backend": "analytic",
+    "lambda_self_values": [1e-5,2e-5],
     "Ng": 18,
     "batch_size": 24,
     "enforce_self_projection": true

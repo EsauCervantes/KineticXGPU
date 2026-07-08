@@ -1020,7 +1020,8 @@ def run_hybrid_FI_then_adaptive_self(
     # Self-scattering collision operator
     #
     # Built-in self-collision operators use this interface, so external
-    # operators should follow it too.
+    # operators should follow it too. Contact-kernel backend choices are bound
+    # into C_self_operator before reaching this solver.
     # ------------------------------------------------------------
     Cself_full = partial(
         C_self_operator,

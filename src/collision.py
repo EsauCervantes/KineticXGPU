@@ -209,6 +209,25 @@ def F_analytical(pi, Ei, pn, En, pm, Em, m, lam, mu2=None, w2=None, eps_disc=0.0
     return torch.where(phys, F, torch.zeros_like(F))
 
 
+def resolve_contact_kernel_backend(kernel_backend):
+    """Return the contact-kernel implementation for a public backend name.
+
+    Both backends evaluate the same contact-interaction kernel. The analytic
+    backend is the production default; the quadrature backend is kept for
+    validation and for later generalizations to non-contact matrix elements.
+    """
+    backend = str(kernel_backend).strip().lower()
+    if backend not in ("analytic", "quadrature"):
+        raise ValueError(
+            "Invalid kernel_backend. Allowed values are exactly "
+            "'analytic' or 'quadrature'."
+        )
+
+    if backend == "analytic":
+        return backend, F_analytical, False
+    return backend, F_contact, True
+
+
 # ============================================================
 # Self-collision
 # ============================================================
@@ -415,6 +434,53 @@ def _C_MB_impl(
 
     return C, E, p, dp_vec
 
+
+def _C_MB_analytic_entry(
+    f, a,
+    q,
+    m, lam,
+    Ng=16, batch_size=16,
+    return_diagnostics=False,
+    enforce_self_projection=True,
+):
+    return _C_MB_impl(
+        f=f,
+        a=a,
+        q=q,
+        m=m,
+        lam=lam,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=return_diagnostics,
+        enforce_self_projection=enforce_self_projection,
+        F_func=F_analytical,
+        F_needs_quadrature=False,
+    )
+
+
+def _C_MB_quadrature_entry(
+    f, a,
+    q,
+    m, lam,
+    Ng=16, batch_size=16,
+    return_diagnostics=False,
+    enforce_self_projection=True,
+):
+    return _C_MB_impl(
+        f=f,
+        a=a,
+        q=q,
+        m=m,
+        lam=lam,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=return_diagnostics,
+        enforce_self_projection=enforce_self_projection,
+        F_func=F_contact,
+        F_needs_quadrature=True,
+    )
+
+
 def C_MB(
     f, a,
     q,
@@ -422,9 +488,11 @@ def C_MB(
     Ng=16, batch_size=16,
     return_diagnostics=False,
     enforce_self_projection=True,
-    F_func=F_analytical,
-    F_needs_quadrature=False,
+    kernel_backend="analytic",
 ):
+    backend, F_func, F_needs_quadrature = resolve_contact_kernel_backend(
+        kernel_backend
+    )
     if return_diagnostics:
         return _C_MB_impl(
             f=f,
@@ -440,7 +508,12 @@ def C_MB(
             F_needs_quadrature=F_needs_quadrature,
         )
 
-    return C_MB_compiled(
+    compiled = (
+        C_MB_analytic_compiled
+        if backend == "analytic"
+        else C_MB_quadrature_compiled
+    )
+    return compiled(
         f=f,
         a=a,
         q=q,
@@ -450,11 +523,11 @@ def C_MB(
         batch_size=batch_size,
         return_diagnostics=False,
         enforce_self_projection=enforce_self_projection,
-        F_func=F_func,
-        F_needs_quadrature=F_needs_quadrature,
     )
 
-C_MB_compiled = torch.compile(_C_MB_impl)
+
+C_MB_analytic_compiled = torch.compile(_C_MB_analytic_entry)
+C_MB_quadrature_compiled = torch.compile(_C_MB_quadrature_entry)
 
 
 def _stat_eta_from_name(stat):
@@ -680,7 +753,58 @@ def _C_quantum_impl(
     return C, E, p, dp_vec
 
 
-C_quantum_compiled = torch.compile(_C_quantum_impl)
+def _C_quantum_analytic_entry(
+    f, a,
+    q,
+    m, lam,
+    Ng=16, batch_size=16,
+    return_diagnostics=False,
+    enforce_self_projection=True,
+    stat_eta=1.0,
+):
+    return _C_quantum_impl(
+        f=f,
+        a=a,
+        q=q,
+        m=m,
+        lam=lam,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=return_diagnostics,
+        enforce_self_projection=enforce_self_projection,
+        stat_eta=stat_eta,
+        F_func=F_analytical,
+        F_needs_quadrature=False,
+    )
+
+
+def _C_quantum_quadrature_entry(
+    f, a,
+    q,
+    m, lam,
+    Ng=16, batch_size=16,
+    return_diagnostics=False,
+    enforce_self_projection=True,
+    stat_eta=1.0,
+):
+    return _C_quantum_impl(
+        f=f,
+        a=a,
+        q=q,
+        m=m,
+        lam=lam,
+        Ng=Ng,
+        batch_size=batch_size,
+        return_diagnostics=return_diagnostics,
+        enforce_self_projection=enforce_self_projection,
+        stat_eta=stat_eta,
+        F_func=F_contact,
+        F_needs_quadrature=True,
+    )
+
+
+C_quantum_analytic_compiled = torch.compile(_C_quantum_analytic_entry)
+C_quantum_quadrature_compiled = torch.compile(_C_quantum_quadrature_entry)
 
 
 def C_quantum(
@@ -691,10 +815,12 @@ def C_quantum(
     return_diagnostics=False,
     enforce_self_projection=True,
     statistics="boson",
-    F_func=F_analytical,
-    F_needs_quadrature=False,
+    kernel_backend="analytic",
 ):
     stat_eta = _stat_eta_from_name(statistics)
+    backend, F_func, F_needs_quadrature = resolve_contact_kernel_backend(
+        kernel_backend
+    )
     if return_diagnostics:
         return _C_quantum_impl(
             f=f,
@@ -711,7 +837,12 @@ def C_quantum(
             F_needs_quadrature=F_needs_quadrature,
         )
 
-    return C_quantum_compiled(
+    compiled = (
+        C_quantum_analytic_compiled
+        if backend == "analytic"
+        else C_quantum_quadrature_compiled
+    )
+    return compiled(
         f=f,
         a=a,
         q=q,
@@ -722,8 +853,6 @@ def C_quantum(
         return_diagnostics=False,
         enforce_self_projection=enforce_self_projection,
         stat_eta=stat_eta,
-        F_func=F_func,
-        F_needs_quadrature=F_needs_quadrature,
     )
 
 # ============================================================

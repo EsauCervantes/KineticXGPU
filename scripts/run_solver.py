@@ -20,7 +20,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from cBE_solver import solve_condensate_N_loga_quad, solve_free_in_loga_with_abundance
-from collision import C_MB, C_quantum
+from collision import C_MB, C_quantum, resolve_contact_kernel_backend
 from cosmology import VariableGCosmology
 from grid_log import interp1d_monotonic_torch, make_log_q_grid
 from solver import run_hybrid_FI_then_adaptive_self
@@ -92,10 +92,17 @@ def select_self_collision_operator(collision_config):
         )
 
     statistics = SELF_STATISTICS[statistics_key]
+    kernel_backend, _, _ = resolve_contact_kernel_backend(
+        collision_config.get("kernel_backend", "analytic")
+    )
     if statistics == "classical":
-        return statistics, C_MB
+        return statistics, kernel_backend, partial(C_MB, kernel_backend=kernel_backend)
 
-    return statistics, partial(C_quantum, statistics=statistics)
+    return statistics, kernel_backend, partial(
+        C_quantum,
+        statistics=statistics,
+        kernel_backend=kernel_backend,
+    )
 
 
 def make_cosmology(config, device=None, dtype=None):
@@ -200,26 +207,55 @@ def resolve_endpoints(config, cosmo, *, af_override=None):
     }
 
 
-def make_run_name(prefix, q, lam_self, Ng, batch_size, n_windows, rk4_steps_per_window, x_final):
-    return (
-        f"{prefix}_"
-        f"N{q.numel()}_"
-        f"lamself{lam_self:.1e}_"
-        f"Ng{Ng}_"
-        f"batch{batch_size}_"
-        f"nw{n_windows}_"
-        f"rk4spw{rk4_steps_per_window}_"
-        f"xf{x_final:.1e}"
+def make_run_name(
+    prefix,
+    q,
+    lam_self,
+    kernel_backend,
+    Ng,
+    batch_size,
+    n_windows,
+    rk4_steps_per_window,
+    x_final,
+):
+    parts = [
+        str(prefix),
+        f"N{q.numel()}",
+        f"lamself{lam_self:.1e}",
+        str(kernel_backend),
+    ]
+    if kernel_backend == "quadrature":
+        parts.append(f"Ng{Ng}")
+    parts.extend(
+        [
+            f"batch{batch_size}",
+            f"nw{n_windows}",
+            f"rk4spw{rk4_steps_per_window}",
+            f"xf{x_final:.1e}",
+        ]
     )
+    return "_".join(parts)
 
 
-def resolve_run_name(config, lam_self, lam_values, q, Ng, batch_size, n_windows, rk4_steps_per_window, x_final):
+def resolve_run_name(
+    config,
+    lam_self,
+    lam_values,
+    q,
+    kernel_backend,
+    Ng,
+    batch_size,
+    n_windows,
+    rk4_steps_per_window,
+    x_final,
+):
     run_name = config.get("run_name")
     if run_name is None:
         return make_run_name(
             prefix=config.get("run_name_prefix", "hybrid_saved"),
             q=q,
             lam_self=lam_self,
+            kernel_backend=kernel_backend,
             Ng=Ng,
             batch_size=batch_size,
             n_windows=n_windows,
@@ -263,6 +299,9 @@ def make_common_metadata(config, q, endpoints, lam_self=None, run_name=None):
         "g_trilinear": float(physics["lambda_portal"]) * float(physics["v_h"]),
         "multiplicity_condensate": float(physics.get("multiplicity_condensate", 2.0)),
         "self_statistics": collision.get("statistics", "classical"),
+        "kernel_backend": resolve_contact_kernel_backend(
+            collision.get("kernel_backend", "analytic")
+        )[0],
         "Ng": int(collision.get("Ng", 12)),
         "batch_size": int(collision.get("batch_size", 16)),
         "enforce_self_projection": bool(collision.get("enforce_self_projection", True)),
@@ -323,7 +362,7 @@ def run_fbe(config, save_override=None):
         base=10.0,
     )
 
-    statistics, C_self_operator = select_self_collision_operator(collision)
+    statistics, kernel_backend, C_self_operator = select_self_collision_operator(collision)
     lam_values = collision.get("lambda_self_values")
     if lam_values is None:
         lam_values = [float(collision.get("lambda_self", 5e-4))]
@@ -344,6 +383,7 @@ def run_fbe(config, save_override=None):
             lam_self=lam_self,
             lam_values=lam_values,
             q=q,
+            kernel_backend=kernel_backend,
             Ng=Ng,
             batch_size=batch_size,
             n_windows=n_windows,
@@ -361,7 +401,10 @@ def run_fbe(config, save_override=None):
 
         print("=" * 80)
         print(f"Starting fBE run: {run_name}")
-        print(f"device={device}, dtype={dtype}, statistics={statistics}, save={save}")
+        print(
+            f"device={device}, dtype={dtype}, statistics={statistics}, "
+            f"kernel_backend={kernel_backend}, save={save}"
+        )
         print("=" * 80)
 
         traj = run_hybrid_FI_then_adaptive_self(

@@ -27,6 +27,7 @@ if str(SRC_DIR) not in sys.path:
 from grid_log import make_log_q_grid
 from collision import (
     C_MB,
+    resolve_contact_kernel_backend,
 )
 
 
@@ -308,6 +309,7 @@ def run_one_operator(
     repeats,
     warmup,
     device,
+    kernel_backend,
 ):
     op_kwargs = {
         "f": f,
@@ -318,6 +320,7 @@ def run_one_operator(
         "Ng": Ng,
         "batch_size": batch_size,
         "return_diagnostics": True,
+        "kernel_backend": kernel_backend,
     }
 
     # Warmup
@@ -376,6 +379,15 @@ def main():
 
     parser.add_argument("--Ng", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument(
+        "--kernel-backend",
+        choices=["analytic", "quadrature"],
+        default="analytic",
+        help=(
+            "Contact-kernel backend. Analytic is the production default; "
+            "quadrature keeps the original angular integration path."
+        ),
+    )
 
     parser.add_argument(
         "--auto-batch-size",
@@ -473,6 +485,7 @@ def main():
 
     device = torch.device(args.device)
     dtype = torch.float64 if args.dtype == "float64" else torch.float32
+    kernel_backend = resolve_contact_kernel_backend(args.kernel_backend)[0]
 
     if args.out is None:
         qrange_tag = (
@@ -489,6 +502,7 @@ def main():
 
         out_name = (
             f"collision_benchmark_{args.device}_{args.dtype}_"
+            f"{kernel_backend}_"
             f"Ng{args.Ng}_{batch_tag}_"
             f"{qrange_tag}.csv"
         )
@@ -510,6 +524,7 @@ def main():
     print(f"Dtype: {dtype}")
     print(f"q_min_factor: {args.q_min_factor}")
     print(f"q_max_factor: {args.q_max_factor}")
+    print(f"kernel_backend: {kernel_backend}")
 
     if args.memory_aware_batch_size:
         print("Batch mode: memory-aware")
@@ -595,6 +610,7 @@ def main():
                     repeats=args.repeats,
                     warmup=args.warmup,
                     device=device,
+                    kernel_backend=kernel_backend,
                 )
 
                 row.update(
@@ -604,6 +620,7 @@ def main():
                         "N": N,
                         "shape": shape_name,
                         "Ng": args.Ng,
+                        "kernel_backend": kernel_backend,
                         "batch_size": batch_size_this,
                         "batch_mode": batch_info["batch_mode"],
                         "estimated_batch_bytes": batch_info["estimated_batch_bytes"],

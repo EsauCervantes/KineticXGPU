@@ -45,6 +45,7 @@ collision = ContactSelfCollisionOperator(
     mass=1.0,
     coupling=1e-3,
     statistics="classical",
+    kernel_backend="analytic",
     Ng=8,
     batch_size=8,
 )
@@ -62,6 +63,7 @@ kineticxgpu-collision \
   --mass 1.0 \
   --coupling 1e-3 \
   --statistics classical \
+  --kernel-backend analytic \
   --Ng 8 \
   --batch-size 8
 ```
@@ -93,6 +95,12 @@ reference is written under `results/runs/cBE/`.
 The evolution endpoints are set in the JSON through `physics.T_initial` in GeV
 and `physics.x_final`, where `x=m_chi/T`. The default `T_initial` is 150 GeV;
 lower it if you want to start later, i.e. at a larger `x_initial`.
+
+The self-collision contact kernel is selected with `collision.kernel_backend`.
+Use `"analytic"` for the default production backend. Use `"quadrature"` for the
+slower Gauss-Legendre backend, which evaluates the same contact kernel and is
+kept for validation and future generalizations. Keep `collision.Ng` in the
+config; it is used by the quadrature backend and recorded in run metadata.
 
 ## Paper Benchmark
 

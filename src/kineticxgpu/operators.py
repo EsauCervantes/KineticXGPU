@@ -7,10 +7,11 @@ from typing import Literal
 
 import torch
 
-from collision import C_MB, C_quantum
+from collision import C_MB, C_quantum, resolve_contact_kernel_backend
 from grid_log import make_log_q_grid
 
 Statistics = Literal["classical", "boson", "fermion"]
+KernelBackend = Literal["analytic", "quadrature"]
 
 
 def _torch_dtype(dtype):
@@ -50,6 +51,7 @@ class ContactSelfCollisionOperator:
     mass: float
     coupling: float
     statistics: Statistics = "classical"
+    kernel_backend: KernelBackend = "analytic"
     Ng: int = 16
     batch_size: int = 16
     enforce_self_projection: bool = True
@@ -77,6 +79,7 @@ class ContactSelfCollisionOperator:
         self.statistics = aliases.get(stat, stat)
         if self.statistics not in ("classical", "boson", "fermion"):
             raise ValueError("statistics must be classical, boson, or fermion.")
+        self.kernel_backend = resolve_contact_kernel_backend(self.kernel_backend)[0]
 
     def evaluate(self, f, *, a=1.0, return_diagnostics=False):
         """Evaluate the self-collision term for a distribution ``f``."""
@@ -92,6 +95,7 @@ class ContactSelfCollisionOperator:
                 batch_size=self.batch_size,
                 return_diagnostics=return_diagnostics,
                 enforce_self_projection=self.enforce_self_projection,
+                kernel_backend=self.kernel_backend,
             )
 
         return C_quantum(
@@ -105,4 +109,5 @@ class ContactSelfCollisionOperator:
             return_diagnostics=return_diagnostics,
             enforce_self_projection=self.enforce_self_projection,
             statistics=self.statistics,
+            kernel_backend=self.kernel_backend,
         )
