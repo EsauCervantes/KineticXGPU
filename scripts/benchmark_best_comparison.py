@@ -414,6 +414,7 @@ def call_this_work_operator(
         Ng=Ng,
         batch_size=batch_size,
         statistics=stat,
+        kernel_backend="quadrature",
         enforce_self_projection=enforce_self_projection,
         return_diagnostics=return_diagnostics,
     )
@@ -501,6 +502,7 @@ def run_this_work(
         "time_max_s": max(times),
         "finite_C": bool(torch.isfinite(last_C).all().item()),
         "Ng": Ng,
+        "kernel_backend": "quadrature",
         "batch_size": batch_size,
         "batch_mode": batch_info["batch_mode"],
         "estimated_batch_bytes": batch_info["estimated_batch_bytes"],
@@ -1455,6 +1457,7 @@ def main():
             "this work:    dense operator on "
             f"{', '.join(this_work_devices)} ({args.dtype}), "
             f"stat={args.this_work_stat}, "
+            "kernel_backend=quadrature, "
             f"projection={args.enforce_self_projection}"
         )
 
